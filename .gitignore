@@ -1,0 +1,34 @@
+# Python virtual environments and bytecode (team-memory MCP server)
+.venv/
+**/__pycache__/
+*.pyc
+
+# Local Claude Code state — never shared, regenerated per machine/workspace
+.claude/settings.local.json
+.claude/team-memory.db
+.claude/team-memory.db-*
+.claude/pm-progress.md
+.claude/pm-last-run.txt
+.claude/decisions-digest.md
+.claude/handoffs/
+
+# Pipeline coordination state, only relevant if this repo is itself used as a
+# product-manager workspace (e.g. to dogfood the agents on themselves)
+.user-stories/
+.stories-reviewed/
+.validated-stories/
+.completed/
+.decisions/
+
+# Secrets / environment
+.env
+.env.*
+*.pem
+*.key
+
+# Logs
+*.log
+
+# Editor/OS cruft
+.DS_Store
+Thumbs.db

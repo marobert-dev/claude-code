@@ -1,0 +1,2 @@
+# Works with the current MCP Python SDK (2.x, MCPServer) and with 1.x (FastMCP): server.py imports whichever exists.
+mcp>=1.2

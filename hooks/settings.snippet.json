@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__team-memory"
+    ]
+  },
+  "hooks": {
+    "SubagentStop": [
+      {
+        "matcher": "dev-frontend|dev-backend|dev-integrator",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/gate.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}
