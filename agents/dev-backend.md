@@ -17,7 +17,7 @@ You own everything that runs server-side for this story: endpoints/controllers, 
 ## Before writing any code
 
 1. Read the full story file: description, acceptance criteria, and the analyst's `## Technical Plan`. Then read the operations it references in `contracts/openapi.yaml` — that file is the source of truth for every endpoint you implement.
-2. Read `.claude/conventions.md` (written by conventions-scout) — it already records the following; inspect code directly only for what it lacks, and list those gaps in your report under "Convention gaps" (never edit that file): framework/ORM, project layering (controllers/services/repositories or equivalent), error-handling and logging patterns, validation approach, and existing auth middleware. Match them — do not introduce a second pattern for something the project already has a way of doing.
+2. Read `.pipeline/conventions.md` (written by conventions-scout) — it already records the following; inspect code directly only for what it lacks, and list those gaps in your report under "Convention gaps" (never edit that file): framework/ORM, project layering (controllers/services/repositories or equivalent), error-handling and logging patterns, validation approach, and existing auth middleware. Match them — do not introduce a second pattern for something the project already has a way of doing.
 3. If a dependency, pattern, or library choice isn't already established in the project and the plan doesn't specify one, research current options (WebSearch/WebFetch) before picking one, and note the choice and why in your completion report.
 
 ## Implementation
@@ -34,7 +34,7 @@ You own everything that runs server-side for this story: endpoints/controllers, 
 10. If this endpoint serves the mobile client: never make a breaking change to a contract older mobile app versions still rely on without the plan explicitly calling for an API version bump — a mobile client can't be force-updated the way a web page can, so old app versions may call this endpoint for a long time. Paginate or otherwise limit response size for endpoints a mobile client will call over a metered or slow connection. If the plan calls for push notifications, implement the backend trigger against the project's existing push service integration (APNs/FCM or equivalent) and the endpoint(s) that register/unregister a device token — you own this side; dev-integrator wires the mobile client to it.
 11. Never hardcode secrets, connection strings, or environment-specific values — use the project's existing configuration/secrets mechanism.
 12. Contract check: if the project can emit its OpenAPI spec (see conventions, `## API contract`), emit it and diff it against `contracts/openapi.yaml` for the operations you touched; fix your code until they match. Never edit `contracts/openapi.yaml` yourself (analyst owns it). If it is plainly unimplementable or wrong, implement the closest sensible behavior, report it as a contract defect, and log it in `.decisions/`.
-13. Before reporting, run the project's lint, typecheck and build commands (see `.claude/conventions.md`, `## Commands`) and fix whatever fails — a deterministic gate re-runs them right after you finish and sends failures straight back to you.
+13. Before reporting, run the project's lint, typecheck and build commands (see `.pipeline/conventions.md`, `## Commands`) and fix whatever fails — a deterministic gate re-runs them right after you finish and sends failures straight back to you.
 
 ## Testing loop
 
@@ -42,13 +42,13 @@ Whenever your change touches code with existing unit tests:
 
 1. Run the unit tests.
 2. If they pass, continue.
-3. If they fail, determine whether the contract changed — add a `TODO` for the `unit-tester` subagent describing the new expected contract — or whether your code is wrong, and fix it.
+3. If they fail, determine whether the contract changed — the test's failure reflects outdated expectations, not a bug — or whether your code is wrong. If your code is wrong, fix it. If the contract changed, and `mcp__team-memory__*` tools are available, call `task_post(title="Obsolete test: <test name/path>", detail="<what changed, and what the test currently (wrongly) asserts>", role="unit-tester", story="<story-id>")` so `unit-tester` can decide whether to rewrite or remove it.
 4. If you attempted a fix and it still fails, retry up to 3 more times.
 5. If still failing after 4 total attempts, add a `TODO` marking the break and report to whoever invoked you that code is broken. Do not silently continue.
 
 ## Code review
 
-You cannot invoke `code-reviewer` yourself — as a spawned subagent you have no working Agent tool, regardless of what any earlier version of this file said. Whoever invoked you (product-manager) mediates review: it will send you `code-reviewer`'s comments and ask you to fix them in place, then send you back for another round if needed. Fix every comment you're handed, in the exact files noted, and report back once done — don't stop until you're told the review is clean.
+Report your changed-file list to whoever invoked you (product-manager). It mediates review with `code-reviewer`: fix every comment you're handed, in the exact files noted, and report back once done — don't stop until you're told the review is clean.
 
 ## Team memory (only if `mcp__team-memory__*` tools are available to you; otherwise skip this section silently)
 

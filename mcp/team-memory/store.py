@@ -122,7 +122,7 @@ def _fts_query(query: str) -> str:
 
 # ----------------------------------------------------------------------------- store
 def default_db_path() -> Path:
-    """$TEAM_MEMORY_DB, else <workspace>/.claude/team-memory.db.
+    """$TEAM_MEMORY_DB, else <workspace>/.pipeline/team-memory.db.
     Inside a git worktree, <workspace> is the MAIN worktree, so parallel worktree sessions share one database."""
     env = os.environ.get("TEAM_MEMORY_DB")
     if env:
@@ -137,7 +137,7 @@ def default_db_path() -> Path:
                 root = common.parent
     except (OSError, subprocess.SubprocessError):
         pass
-    return root / ".claude" / "team-memory.db"
+    return root / ".pipeline" / "team-memory.db"
 
 
 class Store:
@@ -271,6 +271,26 @@ class Store:
             f"Decision: {_text(decision, 'decision', 1000, True)}",
         ])
         return self.remember(agent, "decision", body, story=story, tags=topic)
+
+    def export_decisions_markdown(self, story: str = "", agent: str = "") -> dict:
+        """Render logged decisions back into the same Agent/Story/Ref/Problem/Choice/Decision markdown
+        format as the .decisions/*.decisions.md files, so a human-readable file can be regenerated from
+        the database. story/agent filter when given ('' = no filter); results are chronological."""
+        story = _name(story, "story", optional=True)
+        agent = _name(agent, "agent", optional=True)
+        where, params = ["kind='decision'", "superseded_by IS NULL"], []
+        if story:
+            where.append("story=?")
+            params.append(story)
+        if agent:
+            where.append("agent=?")
+            params.append(agent)
+        with self._connect() as c:
+            rows = c.execute(
+                f"SELECT agent, story, content, ts FROM memories WHERE {' AND '.join(where)} ORDER BY ts",
+                params).fetchall()
+        entries = [f"Agent: {r['agent']}\nStory: {r['story'] or '(project-wide)'}\n{r['content']}" for r in rows]
+        return {"markdown": "\n\n".join(entries), "count": len(entries)}
 
     def decisions_digest(self, min_count: int = 2) -> dict:
         min_count = max(1, int(min_count))

@@ -1,6 +1,6 @@
 ---
 name: conventions-scout
-description: Scans the workspace once and writes `.claude/conventions.md` — the project's stack, layering, error-handling, validation, auth, i18n, styling, navigation, test setup, and the exact lint/typecheck/build/test/e2e commands — so every other agent reads one file instead of re-detecting conventions on every story. Called by product-manager at startup when the file is missing, and again in refresh mode every few stories.
+description: Scans the workspace once and writes `.pipeline/conventions.md` — the project's stack, layering, error-handling, validation, auth, i18n, styling, navigation, test setup, and the exact lint/typecheck/build/test/e2e commands — so every other agent reads one file instead of re-detecting conventions on every story. Called by product-manager at startup when the file is missing, and again in refresh mode every few stories.
 tools: Read, Grep, Glob, Write, Bash
 model: sonnet
 ---
@@ -11,14 +11,14 @@ Before anything else, check whether `graphify-out/` exists. If it does, read `gr
 
 ## Modes
 
-- **bootstrap** (default): `.claude/conventions.md` does not exist. Scan and create it.
+- **bootstrap** (default): `.pipeline/conventions.md` does not exist. Scan and create it.
 - **refresh**: the file exists. Re-scan, correct anything that drifted, keep the section structure, and append a one-line entry to its `## Change log`. Also fold in any "convention gaps" product-manager passes you from dev-agent reports.
 
 ## What to scan
 
 Workspace root and each repo subdirectory. Read manifests (`package.json`, `*.csproj`, `*.sln`, `tsconfig.json`, `pubspec`, Dockerfiles, CI files), config, and 3-5 representative source files per layer. Record only what you actually observe — never guess.
 
-## Output: `.claude/conventions.md`
+## Output: `.pipeline/conventions.md`
 
 Use exactly these sections (write `not present` when something doesn't exist — never leave a section out):
 

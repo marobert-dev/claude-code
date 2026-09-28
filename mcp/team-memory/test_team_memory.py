@@ -81,6 +81,30 @@ def test_decisions_digest_groups_recurring_topics(s):
     assert [g["topic"] for g in d["recurring"]] == ["error-copy"] and d["recurring"][0]["stories"] == 3
 
 
+def test_export_decisions_markdown_roundtrips_and_filters(s):
+    s.log_decision("product-manager", "01-a", "scope-gap", "step 5", "no frontend scope", "skip|run anyway", "skip")
+    s.log_decision("dev-backend", "02-b", "scope-gap", "step 5", "same tension again", "skip|run anyway", "skip")
+    s.log_decision("product-manager", "01-a", "other-topic", "r2", "p2", "c2", "d2")
+
+    everything = s.export_decisions_markdown()
+    assert everything["count"] == 3
+    assert "Agent: product-manager" in everything["markdown"]
+    assert "Story: 01-a" in everything["markdown"]
+    assert "Ref: step 5" in everything["markdown"]
+    assert "Decision: skip" in everything["markdown"]
+
+    by_story = s.export_decisions_markdown(story="01-a")
+    assert by_story["count"] == 2
+    assert "02-b" not in by_story["markdown"]
+
+    by_agent = s.export_decisions_markdown(agent="dev-backend")
+    assert by_agent["count"] == 1
+    assert "same tension again" in by_agent["markdown"]
+
+    none_found = s.export_decisions_markdown(story="no-such-story")
+    assert none_found == {"markdown": "", "count": 0}
+
+
 # ---------------------------------------------------------------- tasks
 def test_task_flow_priority_dependencies_and_ownership(s):
     t1 = s.task_post("plan", story="s1", role="analyst", priority=5)["id"]
@@ -218,7 +242,7 @@ def test_default_db_shared_across_git_worktrees(tmp_path, monkeypatch):
     wt = tmp_path / "repo-wt-a"
     _git(main, "worktree", "add", "-q", str(wt), "-b", "feature/a", "dev")
     monkeypatch.delenv("TEAM_MEMORY_DB", raising=False)
-    expected = (main / ".claude" / "team-memory.db").resolve()
+    expected = (main / ".pipeline" / "team-memory.db").resolve()
     monkeypatch.chdir(wt)
     assert default_db_path().resolve() == expected                 # worktree -> main workspace DB
     monkeypatch.chdir(main)
@@ -231,6 +255,6 @@ def test_default_db_fallback_and_env_override(tmp_path, monkeypatch):
     plain = tmp_path / "not-a-repo"; plain.mkdir()
     monkeypatch.delenv("TEAM_MEMORY_DB", raising=False)
     monkeypatch.chdir(plain)
-    assert default_db_path().resolve() == (plain / ".claude" / "team-memory.db").resolve()
+    assert default_db_path().resolve() == (plain / ".pipeline" / "team-memory.db").resolve()
     monkeypatch.setenv("TEAM_MEMORY_DB", str(tmp_path / "custom.db"))
     assert default_db_path() == tmp_path / "custom.db"

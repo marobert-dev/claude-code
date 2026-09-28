@@ -12,7 +12,7 @@ Before anything else, check whether `graphify-out/` exists in the workspace. If 
 
 When invoked with the story file and its integration report:
 
-First read `.claude/conventions.md` — `## Tests` and `## Commands` tell you the e2e framework, where tests live, and the exact commands to start the app and run tests.
+First read `.pipeline/conventions.md` — `## Tests` and `## Commands` tell you the e2e framework, where tests live, and the exact commands to start the app and run tests.
 
 ## 1. Validate the current story — with automated tests
 

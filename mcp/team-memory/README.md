@@ -18,9 +18,9 @@ claude mcp add --scope user team-memory -- ~\.mcp\team-memory\.venv\Scripts\pyth
 
 Linux/macOS: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`, then the same `claude mcp add` with the venv's `python`.
 
-The database defaults to `<workspace>/.claude/team-memory.db` (the server runs in the workspace folder), so every
+The database defaults to `<workspace>/.pipeline/team-memory.db` (the server runs in the workspace folder), so every
 workspace gets its own memory. Inside a git worktree the server automatically uses the **main** worktree's database, so parallel
-stories share one memory. Override with `TEAM_MEMORY_DB=<absolute path>`. Add `.claude/team-memory.db*` to `.gitignore`: it is local coordination state.
+stories share one memory. Override with `TEAM_MEMORY_DB=<absolute path>`. Add `.pipeline/team-memory.db*` to `.gitignore`: it is local coordination state.
 
 Verify: `claude mcp list` shows `team-memory`; inside a session run `/mcp`, then ask the assistant to call `stats`.
 **Also verify that a subagent can call it** (see TEAM-MEMORY-PROPOSAL.md, section 2) before changing any agent.

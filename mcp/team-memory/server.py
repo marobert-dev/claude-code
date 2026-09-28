@@ -2,7 +2,7 @@
 
 Run (stdio, default):     python server.py
 Run (shared HTTP server): TEAM_MEMORY_TRANSPORT=streamable-http python server.py   (127.0.0.1:8765/mcp)
-Database: $TEAM_MEMORY_DB, else <current working directory>/.claude/team-memory.db
+Database: $TEAM_MEMORY_DB, else <current working directory>/.pipeline/team-memory.db
 """
 from __future__ import annotations
 
@@ -63,6 +63,14 @@ def log_decision(agent: str, story: str, topic: str, ref: str, problem: str, cho
     """Log an autonomous judgment call (same fields as the .decisions/ format). topic = short kebab-case slug of the recurring theme
     (e.g. 'error-copy', 'i18n-keys', 'auth-scope') — decisions_digest groups by it."""
     return store.log_decision(agent, story, topic, ref, problem, choice, decision)
+
+
+@mcp.tool()
+def export_decisions_markdown(story: str = "", agent: str = "") -> dict:
+    """Render logged decisions (log_decision) back into the same Agent/Story/Ref/Problem/Choice/Decision
+    markdown format as the .decisions/*.decisions.md files, so a human-readable file can be regenerated
+    on demand instead of hand-written alongside log_decision. Filter by story and/or agent ('' = all)."""
+    return store.export_decisions_markdown(story, agent)
 
 
 @mcp.tool()

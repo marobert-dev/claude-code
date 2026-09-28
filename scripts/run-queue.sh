@@ -5,13 +5,13 @@
 #                     unattended runs cannot answer permission prompts, so pre-approve tools via
 #                     .claude/settings.json permissions and/or --permission-mode).
 #       PM_EXTRA      extra instruction appended to the prompt, e.g. "Git management: enabled."
-# product-manager writes one line to .claude/pm-last-run.txt after each run:
+# product-manager writes one line to .pipeline/pm-last-run.txt after each run:
 #       COMPLETED <slug> | FAILED <slug> | EMPTY
 set -u
 MAX="${1:-1000}"
 FLAGS="${CLAUDE_FLAGS:---permission-mode acceptEdits}"
-STATUS=".claude/pm-last-run.txt"
-mkdir -p .claude
+STATUS=".pipeline/pm-last-run.txt"
+mkdir -p .pipeline
 i=0
 while [ "$i" -lt "$MAX" ]; do
   rm -f "$STATUS"
@@ -25,7 +25,7 @@ while [ "$i" -lt "$MAX" ]; do
   case "$LAST" in
     COMPLETED*) i=$((i+1)) ;;
     EMPTY*)     echo "[run-queue] queue empty."; exit 0 ;;
-    *)          echo "[run-queue] stopping (failure or unknown status). See .claude/handoffs/ and .claude/pm-progress.md"; exit 1 ;;
+    *)          echo "[run-queue] stopping (failure or unknown status). See .pipeline/handoffs/ and .pipeline/pm-progress.md"; exit 1 ;;
   esac
 done
 echo "[run-queue] reached max stories ($MAX)."

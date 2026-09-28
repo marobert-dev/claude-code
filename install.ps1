@@ -26,7 +26,7 @@ New-Item -ItemType Directory -Force -Path $AgentsDir | Out-Null
 $agentFiles = Get-ChildItem (Join-Path $ScriptDir "agents") -Filter *.md
 Copy-Item $agentFiles.FullName -Destination $AgentsDir -Force
 Write-Host "    $($agentFiles.Count) agent files copied."
-Write-Host "    Restart Claude Code if $AgentsDir didn't already exist before this copy —"
+Write-Host "    Restart Claude Code if $AgentsDir didn't already exist before this copy -"
 Write-Host "    a running session only picks up a brand-new agents directory after a restart."
 
 if ($Workspace) {
@@ -37,12 +37,12 @@ if ($Workspace) {
     Copy-Item (Join-Path $ScriptDir "scripts\run-queue.sh") (Join-Path $Workspace "scripts\") -Force
     Copy-Item (Join-Path $ScriptDir "scripts\run-parallel.sh") (Join-Path $Workspace "scripts\") -Force
     Write-Host "    Copied gate.sh, run-queue.sh, run-parallel.sh."
-    Write-Host "    NOTE: these are bash scripts — run them from Git Bash or WSL, not PowerShell."
+    Write-Host "    NOTE: these are bash scripts - run them from Git Bash or WSL, not PowerShell."
     Write-Host "    NOT auto-merged: $ScriptDir\hooks\settings.snippet.json into $Workspace\.claude\settings.json"
     Write-Host "    Back up settings.json first, then merge that snippet by hand"
     Write-Host "    (adds the gate hook + the team-memory MCP permission)."
 } else {
-    Write-Host "==> No -Workspace given — skipping per-project helpers (hooks/, scripts/)."
+    Write-Host "==> No -Workspace given - skipping per-project helpers (hooks/, scripts/)."
     Write-Host "    Re-run as: .\install.ps1 -Workspace C:\path\to\your\app-repo"
 }
 

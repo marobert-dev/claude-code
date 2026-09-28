@@ -5,12 +5,13 @@
 
 # Local Claude Code state — never shared, regenerated per machine/workspace
 .claude/settings.local.json
-.claude/team-memory.db
-.claude/team-memory.db-*
-.claude/pm-progress.md
-.claude/pm-last-run.txt
-.claude/decisions-digest.md
-.claude/handoffs/
+
+# Pipeline coordination state — written at runtime outside .claude/ because
+# Claude Code treats .claude/ as a protected path that blocks unattended writes.
+# Everything here is regenerated per machine/workspace, except conventions.md,
+# which is meant to be shared and committed.
+.pipeline/*
+!.pipeline/conventions.md
 
 # Pipeline coordination state, only relevant if this repo is itself used as a
 # product-manager workspace (e.g. to dogfood the agents on themselves)

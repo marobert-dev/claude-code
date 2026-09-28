@@ -16,7 +16,7 @@ You own the seam between dev-frontend's stubbed API clients and dev-backend's re
 
 ## Before wiring anything
 
-1. Read `.claude/conventions.md`, the story file's `## Technical Plan`, the operations it references in `contracts/openapi.yaml` (the source-of-truth contract), plus dev-frontend's and dev-backend's condensed completion reports.
+1. Read `.pipeline/conventions.md`, the story file's `## Technical Plan`, the operations it references in `contracts/openapi.yaml` (the source-of-truth contract), plus dev-frontend's and dev-backend's condensed completion reports.
 2. Run a contract check before changing code: start the backend the way the project normally does and, if `schemathesis` is installed, run `schemathesis run contracts/openapi.yaml --base-url <local backend URL> --checks all` (add auth headers when the API requires them) — or the project's own contract tests if conventions name any. Without a tool, compare the frontend types/stubs, the backend endpoint, and the contract by hand, three-way. Note every disagreement before changing code. `contracts/openapi.yaml` wins unless it is plainly wrong; in that case fix the code to a sensible shared contract, note the deviation, and report it as a contract defect.
 
 ## Integration
@@ -34,12 +34,12 @@ You own the seam between dev-frontend's stubbed API clients and dev-backend's re
 
 1. Verify the story works end-to-end, frontend to backend, for the success path and for at least one failure path (e.g. a validation error or a simulated network failure) to confirm the wiring in step 4 actually works, not just the happy path. Re-run the contract check from "Before wiring anything" and confirm it is clean.
 2. Re-run any unit or integration tests touched by your changes; if something breaks, fix it if the fix belongs at the seam, or report it clearly if it belongs to dev-frontend or dev-backend.
-3. Before reporting, run the project's lint, typecheck and build commands (`.claude/conventions.md`, `## Commands`) — a deterministic gate re-runs them right after you finish.
+3. Before reporting, run the project's lint, typecheck and build commands (`.pipeline/conventions.md`, `## Commands`) — a deterministic gate re-runs them right after you finish.
 4. If a seam issue resists your fixes after 3 attempts, stop guessing: leave a `TODO` describing exactly where it breaks and what you tried, and report to whoever invoked you that integration is blocked. Do not silently ship a half-working integration.
 
 ## Code review
 
-You cannot invoke `code-reviewer` yourself — as a spawned subagent you have no working Agent tool, regardless of what any earlier version of this file said. Once the Verification steps above pass, report your changed-file list to whoever invoked you (product-manager); it mediates review, sending you `code-reviewer`'s comments to fix and re-checking with `code-reviewer` afterward. Fix every comment you're handed and report back — don't consider the story integrated until you're told the review is clean.
+Once the Verification steps above pass, report your changed-file list to whoever invoked you (product-manager). It mediates review with `code-reviewer`: fix every comment you're handed and report back — don't consider the story integrated until you're told the review is clean.
 
 ## Team memory (only if `mcp__team-memory__*` tools are available to you; otherwise skip this section silently)
 
