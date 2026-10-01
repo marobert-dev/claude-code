@@ -1,0 +1,35 @@
+# Python virtual environments and bytecode (team-memory MCP server)
+.venv/
+**/__pycache__/
+*.pyc
+
+# Local Claude Code state — never shared, regenerated per machine/workspace
+.claude/settings.local.json
+
+# Pipeline coordination state — written at runtime outside .claude/ because
+# Claude Code treats .claude/ as a protected path that blocks unattended writes.
+# Everything here is regenerated per machine/workspace, except conventions.md,
+# which is meant to be shared and committed.
+.pipeline/*
+!.pipeline/conventions.md
+
+# Pipeline coordination state, only relevant if this repo is itself used as a
+# product-manager workspace (e.g. to dogfood the agents on themselves)
+.user-stories/
+.stories-reviewed/
+.validated-stories/
+.completed/
+.decisions/
+
+# Secrets / environment
+.env
+.env.*
+*.pem
+*.key
+
+# Logs
+*.log
+
+# Editor/OS cruft
+.DS_Store
+Thumbs.db

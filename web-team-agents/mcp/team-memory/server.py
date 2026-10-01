@@ -99,6 +99,15 @@ def task_claim(agent: str, story: str = "", role: str = "", lease_seconds: int =
 
 
 @mcp.tool()
+def task_checkpoint(story: str, role: str, status: str, title: str = "", detail: str = "", result: str = "") -> dict:
+    """Report the status of one pipeline step for a story you alone are tracking (e.g. product-manager
+    mirroring its own run) in a single call: upserts by (story, role), no task_claim/task_finish needed.
+    status: 'open', 'claimed', 'done' or 'failed'. Not for a shared queue multiple agents pull from -- use
+    task_post/task_claim/task_finish for that (e.g. the dev -> unit-tester obsolete-test handoff)."""
+    return store.task_checkpoint(story, role, status, title, detail, result)
+
+
+@mcp.tool()
 def task_heartbeat(task_id: int, agent: str, lease_seconds: int = 900) -> dict:
     """Extend the lease on a task you claimed."""
     return store.task_heartbeat(task_id, agent, lease_seconds)

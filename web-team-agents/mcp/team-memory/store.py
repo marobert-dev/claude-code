@@ -326,6 +326,33 @@ class Store:
                 (now, now, story, title, detail, role, int(priority), json.dumps(deps))).lastrowid
         return {"id": tid}
 
+    def task_checkpoint(self, story: str, role: str, status: str, title: str = "", detail: str = "", result: str = "") -> dict:
+        """Single-call, idempotent status write for a story's own pipeline-step mirror: no claim/ownership
+        dance, because there is exactly one writer (e.g. product-manager reporting its own progress on its
+        own story). Upserts by (story, role): updates the existing row for that pair if one exists, else
+        inserts a new one already in the given status. For a real pool of workers pulling from a shared
+        queue (e.g. dev -> unit-tester obsolete-test handoff), use task_post/task_claim/task_finish instead."""
+        story = _name(story, "story")
+        role = _name(role, "role")
+        if status not in ("open", "claimed", "done", "failed"):
+            raise ValueError("status must be open, claimed, done or failed")
+        title = _text(title, "title", 200) or role
+        detail = _text(detail, "detail", MAX_CONTENT)
+        result = _text(result, "result", 2000)
+        now = time.time()
+        with self._tx() as c:
+            row = c.execute("SELECT id FROM tasks WHERE story=? AND role=? ORDER BY id DESC LIMIT 1", (story, role)).fetchone()
+            if row:
+                tid = row["id"]
+                c.execute("UPDATE tasks SET status=?, result=?, claimed_by=?, lease_until=NULL, updated=? WHERE id=?",
+                          (status, result, role, now, tid))
+            else:
+                tid = c.execute(
+                    "INSERT INTO tasks(ts, updated, story, title, detail, role, priority, depends_on, status, claimed_by, result) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    (now, now, story, title, detail, role, 0, "[]", status, role, result)).lastrowid
+        return {"id": tid, "story": story, "role": role, "status": status}
+
     def _task(self, r: sqlite3.Row, blocked_by: list[int] | None = None) -> dict:
         d = {"id": r["id"], "story": r["story"], "title": r["title"], "detail": r["detail"], "role": r["role"],
              "priority": r["priority"], "status": r["status"], "claimed_by": r["claimed_by"],

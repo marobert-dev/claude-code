@@ -105,6 +105,33 @@ def test_export_decisions_markdown_roundtrips_and_filters(s):
     assert none_found == {"markdown": "", "count": 0}
 
 
+def test_task_checkpoint_upserts_without_claim(s):
+    r1 = s.task_checkpoint(story="s5", role="analyst", status="done", detail="plan written")
+    assert r1["status"] == "done"
+    tid = r1["id"]
+    rows = s.task_list(story="s5")
+    assert len(rows) == 1
+    assert rows[0]["id"] == tid
+    assert rows[0]["role"] == "analyst"
+    assert rows[0]["status"] == "done"
+    assert rows[0]["claimed_by"] == "analyst"
+
+    # same (story, role) pair again -> updates the same row, no duplicate
+    r2 = s.task_checkpoint(story="s5", role="analyst", status="failed", result="reverted")
+    assert r2["id"] == tid
+    rows = s.task_list(story="s5")
+    assert len(rows) == 1
+    assert rows[0]["status"] == "failed"
+    assert rows[0]["result"] == "reverted"
+
+    # a different role on the same story is a separate row
+    s.task_checkpoint(story="s5", role="dev-backend", status="done")
+    assert len(s.task_list(story="s5")) == 2
+
+    with pytest.raises(ValueError):
+        s.task_checkpoint(story="s5", role="analyst", status="bogus")
+
+
 # ---------------------------------------------------------------- tasks
 def test_task_flow_priority_dependencies_and_ownership(s):
     t1 = s.task_post("plan", story="s1", role="analyst", priority=5)["id"]

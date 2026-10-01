@@ -5,7 +5,8 @@
 ```
 agents/    12 subagent definitions — installed into ~/.claude/agents/ (global, all projects)
 hooks/     gate.sh (deterministic lint/typecheck/build/test gate) + settings.snippet.json
-scripts/   run-queue.sh, run-parallel.sh — unattended/parallel pipeline runners
+scripts/   run-queue.sh, run-parallel.sh — pipeline runners
+           enable-graphify.sh / enable-graphify.ps1 — optionally inject Graphify support
 mcp/       team-memory/ — optional shared-memory MCP server (source; see its own README)
 install.sh / install.ps1   installer — run one, see below
 ```
@@ -83,6 +84,36 @@ Don't set `product-manager` as a project-wide default agent in `.claude/settings
 
 **Why launch with `product-manager`, not `product-owner`, to process the queue:** only the agent running as the actual Claude Code session has native access to your `/handoff` and `/resume` commands, and product-manager is the one that needs them (it pauses mid-pipeline on failure or every 5 stories). product-owner doesn't need this — it's a short, one-shot run, which is also why it's fine for it to be a fully separate invocation now.
 
+## 3a. Graphify integration (optional, enables auto-update)
+
+**By default, agents do NOT use Graphify** — the pipeline is entirely independent and has no external dependencies. This keeps the agent stack lean and publishable.
+
+**To add Graphify support** (if you have [Graphify](https://githubify.com/) set up in your workspace and want agents to query it for architecture analysis):
+
+```bash
+# Bash / Linux / macOS:
+bash scripts/enable-graphify.sh --backup
+
+# Windows PowerShell:
+.\scripts\enable-graphify.ps1 -Backup
+```
+
+This:
+1. Backs up the current agents to `~/.claude/agents-graphify-backup-<timestamp>/`
+2. Injects a "Before anything else" block into each agent that checks for `graphify-out/`
+3. If Graphify exists, agents will read `GRAPH_REPORT.md` and can run `graphify query "<question>"` for dependency analysis
+4. If Graphify doesn't exist, agents silently skip this and proceed normally
+
+**To remove Graphify** (revert to the minimal agent definitions):
+
+```bash
+bash scripts/enable-graphify.sh --remove
+# or
+.\scripts\enable-graphify.ps1 -Remove
+```
+
+Agents are designed to work perfectly with or without Graphify — the integration is non-invasive and optional.
+
 ### 3b. Unattended and parallel runs
 
 - **One fresh session per story** (context never accumulates): `bash scripts/run-queue.sh` from the workspace root. It runs `claude -p ... --agent product-manager` in ONE STORY MODE, reads `.pipeline/pm-last-run.txt` (`COMPLETED`, `FAILED`, or `EMPTY`), and stops on the first failure. Set `CLAUDE_FLAGS` (default `--permission-mode acceptEdits`) and pre-approve the tools your setup needs in `.claude/settings.json` — a headless run cannot answer permission prompts.
@@ -90,7 +121,7 @@ Don't set `product-manager` as a project-wide default agent in `.claude/settings
 
 ### 3c. Team memory (phase 1, optional)
 
-Source lives in this repo, at `mcp/team-memory/` (see its `README.md`); the installed copy Claude Code actually runs is a separate copy at `~\.mcp\team-memory\`, registered globally (`--scope user`) so every project on this machine can use it — **re-copy `server.py`/`store.py` there after every source change, or the running server silently keeps the old behavior** (this bit us once: it kept defaulting to `.claude/team-memory.db` for days after the source was fixed to `.pipeline/team-memory.db`). Merge `hooks/settings.snippet.json` into each project's `.claude/settings.json` (it now also allows `mcp__team-memory`), and add `.pipeline/team-memory.db*` to that project's `.gitignore`. **Phase 1:** product-manager adds a short "Team memory briefing" to each agent prompt and writes a handoff entry at every checkpoint and a fact when a story completes. **Phase 2:** analyst, dev-frontend, dev-backend, dev-integrator, code-reviewer, security-reviewer, story-validator and unit-tester also have the tools (`tools:` line) and each has a "Team memory" section — `story_context`/`recall` before working, locks on shared files, at most 3 `remember` calls at the end, `log_decision` for judgment calls, and reviewers save recurring `review-pattern` rules that devs recall before coding. Every agent ends its report with `Memory: available|unavailable`, so the first story doubles as the smoke test that subagents can reach the server (product-manager records the result in `.pipeline/pm-progress.md`). If the server is missing, every agent skips its memory steps silently and the pipeline runs exactly as before. **Phase 3 (applied 2026-09-24, validated on 5 stories — review rounds dropped from ~1-2/story to 4/5 clean first-round):** product-manager mirrors the pipeline's steps onto the task board (`task_post`/`task_finish`, `depends_on`-chained) for crash-recovery visibility; product-owner reads `recall(kind="fact")` and `decisions_digest()` before writing new stories to avoid re-queuing built capabilities; doc-writer optionally reads `recall(kind="fact", story=...)`; the server gained `export_decisions_markdown(story, agent)` so `.decisions/*.decisions.md` can eventually be regenerated from `log_decision` entries instead of hand-written in parallel (not yet switched over — both still run side by side). Details: `TEAM-MEMORY-PROPOSAL.md`.
+Source lives in this repo, at `mcp/team-memory/` (see its `README.md`); the installed copy Claude Code actually runs is a separate copy at `~\.mcp\team-memory\`, registered globally (`--scope user`) so every project on this machine can use it — **re-copy `server.py`/`store.py` there after every source change, or the running server silently keeps the old behavior** (this bit us once: it kept defaulting to `.claude/team-memory.db` for days after the source was fixed to `.pipeline/team-memory.db`). Merge `hooks/settings.snippet.json` into each project's `.claude/settings.json` (it now also allows `mcp__team-memory`), and add `.pipeline/team-memory.db*` to that project's `.gitignore`. **Phase 1:** product-manager adds a short "Team memory briefing" to each agent prompt and writes a handoff entry at every checkpoint and a fact when a story completes. **Phase 2:** analyst, dev-frontend, dev-backend, dev-integrator, code-reviewer, security-reviewer, story-validator and unit-tester also have the tools (`tools:` line) and each has a "Team memory" section — `story_context`/`recall` before working, locks on shared files, at most 3 `remember` calls at the end, `log_decision` for judgment calls, and reviewers save recurring `review-pattern` rules that devs recall before coding. Every agent ends its report with `Memory: available|unavailable`, so the first story doubles as the smoke test that subagents can reach the server (product-manager records the result in `.pipeline/pm-progress.md`). If the server is missing, every agent skips its memory steps silently and the pipeline runs exactly as before. **Phase 3 (applied 2026-09-24, validated on 5 stories — review rounds dropped from ~1-2/story to 4/5 clean first-round; task board mirror redone 2026-09-30, see incident note below):** product-manager mirrors the pipeline's steps onto the task board with one `task_checkpoint(story, role, status)` call per stage (no separate `task_post`/`task_claim`/`task_finish`) for crash-recovery visibility; product-owner reads `recall(kind="fact")` and `decisions_digest()` before writing new stories to avoid re-queuing built capabilities; doc-writer optionally reads `recall(kind="fact", story=...)`; the server gained `export_decisions_markdown(story, agent)` so `.decisions/*.decisions.md` can eventually be regenerated from `log_decision` entries instead of hand-written in parallel (not yet switched over — both still run side by side). Details: `TEAM-MEMORY-PROPOSAL.md`.
 
 ## 4. Note on claude.ai / Cowork access
 
