@@ -204,7 +204,7 @@ Every directory this pipeline creates and manages for itself is dot-prefixed (hi
 | `.decisions/<agent-name>.decisions.md` | every agent | One file per agent, logging every autonomous judgment call it made (ambiguity, contradiction, gap, question) and why | No — local coordination state |
 | `.pipeline/conventions.md` | conventions-scout (bootstrap/refresh) | Stack, layering, i18n, test setup, exact lint/typecheck/build/test/e2e commands — read by every agent | Yes — shared knowledge |
 | `.pipeline/decisions-digest.md` | product-manager | Recurring ambiguities and "needs human answer" items distilled from `.decisions/`; read by product-owner | No — local coordination state |
-| `.pipeline/team-memory.db` | team-memory MCP server (source: `mcp/team-memory/`; installed at `~\.mcp\team-memory\`, registered globally) | Shared memory (handoffs, story facts, gotchas, review patterns, decisions), task/lock tables — optional | No — local coordination state |
+| `.pipeline/team-memory.db` | team-memory MCP server (source: `mcp/team-memory/`; installed at `~\.mcp\team-memory\`, registered globally) | Shared memory (handoffs, story facts, gotchas, review patterns, decisions, standing rules), task/lock tables, flaky-test registry, usage telemetry — optional | No — local coordination state |
 | `.pipeline/pm-last-run.txt` | product-manager | One-line status (`COMPLETED`/`FAILED`/`EMPTY`) read by the scripts | No — local coordination state |
 | `.claude/hooks/gate.sh` | you (copied from `hooks/`) | Deterministic lint/typecheck/build/unit-test gate | Yes |
 | `contracts/openapi.yaml` | analyst (source of truth); nobody else edits it | API contract shared by backend, frontend, integrator | Yes — project deliverable |

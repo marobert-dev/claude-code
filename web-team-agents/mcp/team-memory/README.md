@@ -25,15 +25,19 @@ stories share one memory. Override with `TEAM_MEMORY_DB=<absolute path>`. Add `.
 Verify: `claude mcp list` shows `team-memory`; inside a session run `/mcp`, then ask the assistant to call `stats`.
 **Also verify that a subagent can call it** (see TEAM-MEMORY-PROPOSAL.md, section 2) before changing any agent.
 
-## Tools (17)
+## Tools (29)
 
 | Group | Tools | Purpose |
 |---|---|---|
-| Memory | `remember`, `recall`, `get_memory`, `retire_memory` | Short facts by kind (`note`, `decision`, `convention`, `gotcha`, `contract`, `review-pattern`, `handoff`, `fact`), full-text search (FTS5, ranked). Same kind+key+story = replaces the old entry, history kept. |
+| Memory | `remember`, `recall`, `get_memory`, `retire_memory` | Short facts by kind (`note`, `decision`, `convention`, `gotcha`, `contract`, `review-pattern`, `handoff`, `fact`, `rule`), full-text search (FTS5, ranked). Same kind+key+story = replaces the old entry, history kept. |
 | Decisions | `log_decision`, `decisions_digest` | Same fields as the `.decisions/` format plus a kebab-case `topic`; the digest lists topics that recur. |
 | Briefing | `story_context` | One call: last handoff, relevant conventions/contracts/gotchas, decisions, notes, open tasks, active locks. |
 | Task board | `task_post`, `task_claim`, `task_heartbeat`, `task_release`, `task_finish`, `task_list` | Atomic claims, priorities, dependencies, lease expiry (a crashed agent releases its task automatically). |
 | Locks | `lock_acquire`, `lock_release`, `lock_list` | Advisory, expiring locks on file paths or logical resources; re-entrant for the holder. |
+| Task checkpoint | `task_checkpoint` | One atomic upsert by `(story, role)` — the cheap way to mirror pipeline progress (replaces post/claim/finish). |
+| Token savers | `contract_lookup`, `conventions`, `similar_stories`, `queue_status`, `rules_briefing`, `promote_rules` | Return a budgeted slice instead of a whole file: an OpenAPI operation/schema (`contract_lookup`, ~1-4k tokens vs ~40k), a conventions section by role/topic, the closest earlier story, the queue state (~400 tokens vs the progress file). `rule` entries are decision topics that recurred in ≥2 stories, auto-promoted inside `log_decision` and shown in `story_context`. |
+| Flaky registry | `flaky_report`, `flaky_list`, `flaky_resolve` | Tests that fail for environmental reasons, with counts and causes, so agents retry once instead of failing a story. |
+| Telemetry | `usage_report` | Characters returned per tool/agent and recall hit rates; lists never-recalled entries only after 14 days of tracking. Pass `agent="<name>"` to `recall`/`story_context` to attribute usage. |
 | Misc | `stats` | Database path and counts. |
 
 Resources: `team-memory://story/{story}` and `team-memory://decisions-digest`.
@@ -60,5 +64,5 @@ do not expose it beyond localhost.
 
 ```bash
 pip install pytest mcp
-pytest -q        # 14 tests: store logic, races across processes, and a real MCP stdio round-trip
+pytest -q        # 26 tests: store logic, races across processes, and a real MCP stdio round-trip
 ```

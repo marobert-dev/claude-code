@@ -26,6 +26,9 @@ Shared team memory for a multi-agent development pipeline. Rules:
 - Corrections: call remember again with the same kind+key+story — the old entry is kept as history and hidden. Use retire_memory for entries that are simply wrong.
 - Parallel work: lock_acquire(resource) before editing a shared file (locale files, route tables, package manifests, the OpenAPI contract) and lock_release when done; if not acquired, work on something else or wait.
 - Task board: task_post / task_claim / task_heartbeat / task_finish. Claims expire (lease), so a crashed agent never blocks the queue.
+- Save tokens, ask for the slice instead of reading the whole file: contract_lookup(query) for the OpenAPI contract (operationId, 'METHOD /path' or a component name; no query = outline), conventions(role, topic) for .pipeline/conventions.md, similar_stories(story) to start from the closest already-built story, queue_status() for the pipeline state at session start. Standing rules (kind 'rule', also inside story_context) are decisions that already recurred: apply them, do not re-decide.
+- Known-flaky tests: flaky_list() before reacting to a failing suite; flaky_report(test, agent, cause) when a failure is clearly not caused by the code.
+- Pass agent="<your agent name>" on read tools (recall, story_context, contract_lookup, conventions, similar_stories, queue_status) so usage_report can show who spends what.
 """
 
 store = Store()
@@ -35,15 +38,15 @@ mcp = _Server("team-memory", instructions=INSTRUCTIONS)
 # ------------------------------------------------------------------ memory
 @mcp.tool()
 def remember(agent: str, kind: str, content: str, story: str = "", key: str = "", tags: str = "") -> dict:
-    """Save a short memory for the team. kind: note | decision | convention | gotcha | contract | review-pattern | handoff | fact.
+    """Save a short memory for the team. kind: note | decision | convention | gotcha | contract | review-pattern | handoff | fact | rule.
     story = story id like '07-login-page' ('' = project-wide). If key is given and the same kind+key+story exists, it is replaced (history kept)."""
     return store.remember(agent, kind, content, story, key, tags)
 
 
 @mcp.tool()
-def recall(query: str = "", story: str = "", kind: str = "", limit: int = 10) -> dict:
-    """Search team memory (full text, best match first; empty query = most recent). With story, returns that story's memories plus project-wide ones."""
-    return {"items": store.recall(query, story, kind, limit)}
+def recall(query: str = "", story: str = "", kind: str = "", limit: int = 10, agent: str = "") -> dict:
+    """Search team memory (full text, best match first; empty query = most recent). With story, returns that story's memories plus project-wide ones. agent = your agent name (usage telemetry only)."""
+    return {"items": store.recall(query, story, kind, limit, agent=agent)}
 
 
 @mcp.tool()
@@ -80,9 +83,78 @@ def decisions_digest(min_count: int = 2) -> dict:
 
 
 @mcp.tool()
-def story_context(story: str, per_section: int = 6) -> dict:
-    """One-call briefing for a story: last handoff, relevant conventions/contracts/gotchas, decisions, notes, open tasks, active locks."""
-    return store.story_context(story, per_section)
+def story_context(story: str, per_section: int = 6, agent: str = "", max_chars: int = 12000) -> dict:
+    """One-call briefing for a story: last handoff, standing rules, relevant conventions/contracts/gotchas, decisions, notes, open tasks, active locks. Capped at max_chars (entries are shortened, then dropped, when over)."""
+    return store.story_context(story, per_section, agent, max_chars)
+
+
+# ------------------------------------------------------------------ token savers
+@mcp.tool()
+def contract_lookup(query: str = "", file: str = "", max_chars: int = 14000, agent: str = "", story: str = "", include_common: bool = False) -> dict:
+    """Read only the part of the OpenAPI contract you need (the file is ~40k tokens; a lookup is ~1-3k). query: '' = outline of every
+    operation + component names | an operationId | 'METHOD /path' | '/path' (all its methods) | a component name ('Meal', 'schemas/Meal') | free words.
+    Operations come with the schemas/parameters/responses they reference, within max_chars; boilerplate most operations share (error envelope,
+    401/429/500 responses) is only named in common_components_omitted (look one up by name, or include_common=true). file defaults to contracts/openapi.yaml."""
+    return store.contract_lookup(query, file, max_chars, agent, story, include_common)
+
+
+@mcp.tool()
+def conventions(role: str = "", topic: str = "", file: str = "", max_chars: int = 9000, agent: str = "", story: str = "") -> dict:
+    """Only the sections of .pipeline/conventions.md you need. role = your agent name (selects the sections relevant to that role);
+    topic = keywords (matched against headings first, then text). With neither, you get an outline (headings + sizes)."""
+    return store.conventions(role, topic, file, max_chars, agent, story)
+
+
+@mcp.tool()
+def similar_stories(story: str, limit: int = 3, agent: str = "") -> dict:
+    """The already-built stories closest to this one (same endpoint verb/resource words), with what was built, the decisions taken and the
+    gotchas/contracts recorded. Start from them instead of re-exploring the codebase; verify against the code before copying."""
+    return store.similar_stories(story, limit, agent)
+
+
+@mcp.tool()
+def queue_status(recent: int = 3, agent: str = "") -> dict:
+    """Compact pipeline state for a session start: stories completed, the last few built (one line each), the story in progress with its stage
+    statuses, the latest handoff, open task counts and the story files waiting in .user-stories/. Cheaper than re-reading the progress log."""
+    return store.queue_status(recent, agent)
+
+
+@mcp.tool()
+def rules_briefing(limit: int = 15, agent: str = "") -> dict:
+    """Standing rules: decisions that already recurred across stories (auto-promoted by log_decision, or curated via remember(kind='rule', key='topic:<slug>')).
+    Apply them without re-deciding. story_context already includes the most recent ones."""
+    return store.rules_briefing(limit, agent)
+
+
+@mcp.tool()
+def promote_rules(min_stories: int = 2) -> dict:
+    """Promote decision topics that recur across >= min_stories stories into standing rules (log_decision does this automatically; call it to backfill)."""
+    return store.promote_rules(min_stories)
+
+
+@mcp.tool()
+def flaky_report(test: str, agent: str, story: str = "", cause: str = "") -> dict:
+    """Register a test or suite that failed for a reason unrelated to the code under test (port already in use, timing, network). Repeats raise its count."""
+    return store.flaky_report(test, agent, story, cause)
+
+
+@mcp.tool()
+def flaky_list(min_count: int = 1, include_resolved: bool = False, limit: int = 30) -> dict:
+    """Known-flaky tests (most frequent first). Check it before treating a failing suite as a regression: re-run only that suite once instead of everything."""
+    return {"items": store.flaky_list(min_count, include_resolved, limit)}
+
+
+@mcp.tool()
+def flaky_resolve(test: str, agent: str) -> dict:
+    """Mark a flaky test as fixed (it reappears if flaky_report sees it fail again)."""
+    return store.flaky_resolve(test, agent)
+
+
+@mcp.tool()
+def usage_report(days: int = 0, limit: int = 8, stale_days: int = 14) -> dict:
+    """What the read tools cost in returned text (chars; ~4 chars per token), per tool and per agent, the heaviest calls, and active memories nobody
+    has ever recalled (prune candidates for retire_memory). days=0 means since tracking began."""
+    return store.usage_report(days, limit, stale_days)
 
 
 # ------------------------------------------------------------------ task board
