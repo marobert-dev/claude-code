@@ -44,9 +44,9 @@ def remember(agent: str, kind: str, content: str, story: str = "", key: str = ""
 
 
 @mcp.tool()
-def recall(query: str = "", story: str = "", kind: str = "", limit: int = 10, agent: str = "") -> dict:
-    """Search team memory (full text, best match first; empty query = most recent). With story, returns that story's memories plus project-wide ones. agent = your agent name (usage telemetry only)."""
-    return {"items": store.recall(query, story, kind, limit, agent=agent)}
+def recall(query: str = "", story: str = "", kind: str = "", limit: int = 6, agent: str = "", snippet: int = 600) -> dict:
+    """Search team memory (full text, best match first; empty query = most recent). With story, returns that story's memories plus project-wide ones. Returns the top `limit` (default 6) entries cut to `snippet` chars (default 600); use get_memory(id) for one in full, or raise limit/snippet only when needed. agent = your agent name (usage telemetry only)."""
+    return {"items": store.recall(query, story, kind, limit, agent=agent, snippet=snippet)}
 
 
 @mcp.tool()

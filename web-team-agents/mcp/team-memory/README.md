@@ -37,7 +37,7 @@ Verify: `claude mcp list` shows `team-memory`; inside a session run `/mcp`, then
 | Task checkpoint | `task_checkpoint` | One atomic upsert by `(story, role)` — the cheap way to mirror pipeline progress (replaces post/claim/finish). |
 | Token savers | `contract_lookup`, `conventions`, `similar_stories`, `queue_status`, `rules_briefing`, `promote_rules` | Return a budgeted slice instead of a whole file: an OpenAPI operation/schema (`contract_lookup`, ~1-4k tokens vs ~40k), a conventions section by role/topic, the closest earlier story, the queue state (~400 tokens vs the progress file). `rule` entries are decision topics that recurred in ≥2 stories, auto-promoted inside `log_decision` and shown in `story_context`. |
 | Flaky registry | `flaky_report`, `flaky_list`, `flaky_resolve` | Tests that fail for environmental reasons, with counts and causes, so agents retry once instead of failing a story. |
-| Telemetry | `usage_report` | Characters returned per tool/agent and recall hit rates; lists never-recalled entries only after 14 days of tracking. Pass `agent="<name>"` to `recall`/`story_context` to attribute usage. |
+| Telemetry | `usage_report` | Characters returned per tool/agent and recall hit rates; lists never-recalled entries only after 14 days of tracking. Pass `agent="<name>"` to `recall`/`story_context` to attribute usage. `recall` returns the top 6 entries cut to 600 characters by default (`limit`, `snippet` to widen; `get_memory(id)` for one in full). |
 | Misc | `stats` | Database path and counts. |
 
 Resources: `team-memory://story/{story}` and `team-memory://decisions-digest`.
@@ -64,5 +64,5 @@ do not expose it beyond localhost.
 
 ```bash
 pip install pytest mcp
-pytest -q        # 26 tests: store logic, races across processes, and a real MCP stdio round-trip
+pytest -q        # 27 tests: store logic, races across processes, and a real MCP stdio round-trip
 ```

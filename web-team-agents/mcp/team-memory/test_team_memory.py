@@ -72,6 +72,15 @@ def test_long_content_is_truncated_in_recall_but_full_in_get(s):
     assert len(s.get_memory(i)["content"]) == 5000
 
 
+def test_recall_defaults_are_compact_and_overridable(s):
+    for n in range(9):
+        s.remember("a", "fact", "alpha " + "z" * 900, key=f"k{n}")
+    items = s.recall("alpha")
+    assert len(items) == 6 and all(len(i["content"]) < 700 for i in items)
+    wide = s.recall("alpha", limit=9, snippet=2000)
+    assert len(wide) == 9 and all(len(i["content"]) > 900 for i in wide)
+
+
 def test_decisions_digest_groups_recurring_topics(s):
     for story in ("01-a", "02-b", "03-c"):
         s.log_decision("dev-frontend", story, "error-copy", "AC 3", "no FR copy given", "invent|ask", "invented FR copy")

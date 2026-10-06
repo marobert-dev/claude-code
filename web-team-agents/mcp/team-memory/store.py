@@ -22,7 +22,9 @@ from typing import Any, Iterator
 KINDS = ("note", "decision", "convention", "gotcha", "contract", "review-pattern", "handoff", "fact", "rule")
 TASK_FINAL = ("done", "failed")
 MAX_CONTENT = 8000
-SNIPPET = 2000
+SNIPPET = 2000          # get_memory / default row snippet
+RECALL_SNIPPET = 600    # recall default: entries are ~400-700 chars; the head carries the point
+RECALL_LIMIT = 6        # recall default: bm25-ranked, so the top few are what matters
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:#-]{0,95}$")
 _TOPIC = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 
@@ -251,19 +253,20 @@ class Store:
                               (new_id, *replaced))
         return {"id": new_id, "replaced": replaced}
 
-    def _row(self, r: sqlite3.Row, full: bool = False) -> dict:
+    def _row(self, r: sqlite3.Row, full: bool = False, snippet: int = SNIPPET) -> dict:
         d = {"id": r["id"], "ts": _iso(r["ts"]), "agent": r["agent"], "story": r["story"], "kind": r["kind"],
-             "key": r["key"], "tags": r["tags"], "content": r["content"] if full else _snip(r["content"])}
+             "key": r["key"], "tags": r["tags"], "content": r["content"] if full else _snip(r["content"], snippet)}
         if r["superseded_by"] is not None:
             d["superseded_by"] = r["superseded_by"]
         return d
 
-    def recall(self, query: str = "", story: str = "", kind: str = "", limit: int = 10,
-               include_retired: bool = False, agent: str = "") -> list[dict]:
+    def recall(self, query: str = "", story: str = "", kind: str = "", limit: int = RECALL_LIMIT,
+               include_retired: bool = False, agent: str = "", snippet: int = RECALL_SNIPPET) -> list[dict]:
         story = _name(story, "story", optional=True)
         if kind and kind not in KINDS:
             raise ValueError(f"kind must be one of {', '.join(KINDS)}")
         limit = max(1, min(int(limit), 50))
+        snippet = max(100, min(int(snippet), 8000))
         where, params = [], []
         if not include_retired:
             where.append("m.superseded_by IS NULL")
@@ -289,7 +292,7 @@ class Store:
             else:
                 sql = "SELECT m.* FROM memories m " + ("WHERE " + " AND ".join(where) + " " if where else "") + "ORDER BY m.id DESC LIMIT ?"
                 rows = c.execute(sql, (*params, limit)).fetchall()
-        out = [self._row(r) for r in rows]
+        out = [self._row(r, snippet=snippet) for r in rows]
         return self._track("recall", out, agent, story, [d["id"] for d in out])
 
     def get_memory(self, memory_id: int) -> dict:
