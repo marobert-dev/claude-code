@@ -1,0 +1,19 @@
+{
+  "id": "SV-01",
+  "title": "Story dont un critère échoue réellement",
+  "agent": "story-validator",
+  "model": "sonnet",
+  "invocation": "direct: claude -p --agent story-validator",
+  "conventions": true,
+  "fixtures_commit_message": "",
+  "memory_line_expected": true,
+  "defects": ["D10"],
+  "criteria": ["gate_tests", "functional", "scope", "protocol", "tests_quality", "a11y_i18n", "efficiency", "stability"],
+  "manual_criteria": [],
+  "scope": {
+    "allowed": ["tests/e2e/19-cart-page/**", ".user-stories/19-cart-page.md", ".validated-stories/**", ".decisions/**", "test-results/**", "playwright-report/**"],
+    "forbidden": ["backend/**", "frontend/**", "contracts/openapi.yaml", "playwright.config.ts", "package.json", "tests/e2e/smoke/**", ".pipeline/conventions.md", ".claude/**"],
+    "max_diff_lines": 400
+  },
+  "budgets": { "turns": 60, "cost_usd": 3.0, "duration_s": 1800 }
+}

@@ -1,0 +1,19 @@
+{
+  "id": "PM-02",
+  "title": "Story dont la validation échoue de façon persistante (FAILED attendu, 2 cycles max)",
+  "agent": "product-manager",
+  "model": "sonnet",
+  "invocation": "session agent: claude -p \"ONE STORY MODE...\" --agent product-manager (same prompt as scripts/run-queue.sh)",
+  "conventions": true,
+  "fixtures_commit_message": "",
+  "memory_line_expected": false,
+  "defects": ["PM02-contradictory-criteria"],
+  "criteria": ["gate_tests", "functional", "scope", "protocol", "tests_quality", "efficiency", "stability"],
+  "manual_criteria": [],
+  "scope": {
+    "allowed": ["backend/**", "frontend/src/**", "frontend/tests/**", "contracts/openapi.yaml", "tests/e2e/01-minimum-order-amount/**", "docs/**", ".pipeline/conventions.md", ".decisions/**"],
+    "forbidden": ["tests/e2e/smoke/**", ".claude/**", "playwright.config.ts"],
+    "max_diff_lines": 1500
+  },
+  "budgets": { "turns": 200, "cost_usd": 25.0, "duration_s": 5400 }
+}

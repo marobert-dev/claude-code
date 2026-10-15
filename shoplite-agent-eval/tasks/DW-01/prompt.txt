@@ -1,0 +1,3 @@
+story-validator confirmed every acceptance criterion of the story `.user-stories/05-order-history.md` (no regression). Document it.
+
+Read its description, Acceptance Criteria, Copy (FR/EN) and the condensed implementation summaries. Return a one-line summary: which documentation sets you updated and which you skipped.

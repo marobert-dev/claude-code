@@ -1,0 +1,24 @@
+{
+  "marker": "REVIEW:",
+  "window_before": 4,
+  "window_after": 3,
+  "roots": ["backend/src", "backend/tests/ShopLite.Api.Tests", "frontend/src", "frontend/tests"],
+  "defects": [
+    { "id": "CR1-ownership", "file": "backend/src/ShopLite.Api/Services/OrderCancellationService.cs",
+      "anchor": "FirstOrDefaultAsync\\(o => o\\.Id == orderId, ct\\)" },
+    { "id": "CR2-window-inverted", "file": "backend/src/ShopLite.Api/Services/OrderCancellationService.cs",
+      "anchor": "CreatedAtUtc > now\\.AddHours" },
+    { "id": "CR3-unawaited-save", "file": "backend/src/ShopLite.Api/Services/OrderCancellationService.cs",
+      "anchor": "_ = db\\.SaveChangesAsync" },
+    { "id": "CR4-hardcoded-copy", "file": "frontend/src/pages/OrdersPage.tsx",
+      "anchor": "^\\s*Cancel order\\s*$|window\\.confirm\\('Cancel this order\\?'\\)" },
+    { "id": "pre-D01-idor", "expect": "tolerated", "file": "backend/src/ShopLite.Api/Services/OrderService.cs",
+      "anchor": "FirstOrDefaultAsync\\(o => o\\.Id == orderId, ct\\)", "window_before": 6 },
+    { "id": "pre-D05-D06-checkout", "expect": "tolerated", "file": "backend/src/ShopLite.Api/Services/OrderService.cs",
+      "anchor": "Task<OrderDto> CheckoutAsync", "window_before": 2, "window_after": 50 },
+    { "id": "pre-D09-n-plus-1", "expect": "tolerated", "file": "backend/src/ShopLite.Api/Services/OrderService.cs",
+      "anchor": "GetOrdersAsync\\(int userId", "window_before": 2, "window_after": 25 },
+    { "id": "pre-D13-swallowed-error", "expect": "tolerated", "file": "frontend/src/pages/OrdersPage.tsx",
+      "anchor": "status: 'success', data: \\[\\]" }
+  ]
+}

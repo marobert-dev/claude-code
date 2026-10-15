@@ -1,0 +1,5 @@
+Implement the web frontend scope of the story `.user-stories/14-order-detail-screen.md`.
+
+Read its description, Acceptance Criteria, Visual Definition, Copy (FR/EN) and Technical Plan, plus the operation it references in `contracts/openapi.yaml` (`getOrder`). Project conventions are in `.pipeline/conventions.md`.
+
+When you are done, report back: files created/modified, platform(s) touched, any dependency added, any deviation from the plan, open TODOs and convention gaps.

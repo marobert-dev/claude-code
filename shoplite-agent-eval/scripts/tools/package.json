@@ -1,0 +1,9 @@
+{
+  "name": "shoplite-eval-tools",
+  "private": true,
+  "type": "module",
+  "description": "Kit-only helpers used by tasks/*/check.sh (never copied into a run).",
+  "dependencies": {
+    "yaml": "^2.8.0"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "team-memory": {
+      "type": "stdio",
+      "command": "${USERPROFILE}/.mcp/team-memory/.venv/Scripts/python.exe",
+      "args": ["${USERPROFILE}/.mcp/team-memory/server.py"],
+      "env": {
+        "TEAM_MEMORY_DB": ".pipeline/team-memory.db"
+      }
+    }
+  }
+}

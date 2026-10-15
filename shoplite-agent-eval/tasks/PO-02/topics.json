@@ -1,0 +1,9 @@
+{
+  "server-side-payment": "server|backend|api creates|payment ?intent",
+  "publishable-key-only": "publishable key|pk_(test|live)|never (exposed|sent|shipped)|not exposed|secret[^\\n]{0,40}(server|backend)",
+  "declined-or-failure": "declin|refused|fail",
+  "amount-matches-total": "amount[^\\n]{0,40}(total|cart)|charged[^\\n]{0,40}total",
+  "webhook-or-confirmation": "webhook|confirm(ation|ed)? (from|by) (stripe|the server)|payment_intent\\.succeeded",
+  "no-double-charge": "idempoten|double charg|charged twice|only once",
+  "sca-3ds": "3-?d ?secure|3ds|sca|strong customer authentication"
+}

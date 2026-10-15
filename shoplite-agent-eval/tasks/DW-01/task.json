@@ -1,0 +1,19 @@
+{
+  "id": "DW-01",
+  "title": "Documentation d'une story validée (dev EN + manuel FR/EN)",
+  "agent": "doc-writer",
+  "model": "sonnet",
+  "invocation": "direct: claude -p --agent doc-writer",
+  "conventions": true,
+  "fixtures_commit_message": "",
+  "memory_line_expected": false,
+  "defects": [],
+  "criteria": ["gate_tests", "functional", "scope", "protocol", "a11y_i18n", "code_quality", "efficiency", "stability"],
+  "manual_criteria": ["code_quality"],
+  "scope": {
+    "allowed": ["docs/**", ".decisions/**"],
+    "forbidden": ["backend/**", "frontend/**", "contracts/openapi.yaml", "tests/**", "playwright.config.ts", "package.json", ".pipeline/conventions.md", ".claude/**"],
+    "max_diff_lines": 3000
+  },
+  "budgets": { "turns": 50, "cost_usd": 3.0, "duration_s": 1500 }
+}

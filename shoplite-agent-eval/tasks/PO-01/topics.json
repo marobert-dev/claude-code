@@ -1,0 +1,10 @@
+{
+  "rating-scale": "rating[^\\n]{0,40}(1|one)[^\\n]{0,10}(to|-|–)[^\\n]{0,5}(5|five)|[1-5] stars?|star rating",
+  "average-rating": "average|mean rating|aggregate",
+  "one-review-per-customer": "already reviewed|one review per|only one review|second review|duplicate",
+  "authentication": "signed[- ]in|sign in|logged[- ]in|authenticated|signed-out|anonymous",
+  "moderation-or-abuse": "moderat|report|flag|abuse|offensive|inappropriate|profan|spam",
+  "pagination-or-sorting": "pagination|paginat|per page|page size|sorted|newest first|load more",
+  "edit-or-delete-own": "edit (their|his|her|my|own)|delete (their|his|her|my|own)|update (their|own)|remove (their|own)",
+  "verified-purchase": "verified|purchased|bought|has ordered|ordered the product"
+}

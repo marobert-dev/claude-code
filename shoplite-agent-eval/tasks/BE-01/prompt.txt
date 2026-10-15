@@ -1,0 +1,5 @@
+Implement the backend scope of the story `.user-stories/04-cart-input-validation.md`.
+
+Read its description, Acceptance Criteria, Copy (FR/EN) and Technical Plan, plus the operations it references in `contracts/openapi.yaml` (`addCartItem`, `updateCartItem`, `listProducts`). Project conventions are in `.pipeline/conventions.md`.
+
+When you are done, report back: files created/modified, the final request/response contract of every changed endpoint, any dependency added, any deviation from the plan, open TODOs and convention gaps.

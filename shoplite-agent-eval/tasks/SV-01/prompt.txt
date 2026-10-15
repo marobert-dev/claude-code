@@ -1,0 +1,3 @@
+Validate the story `.user-stories/19-cart-page.md`. dev-integrator marked it integrated and security-reviewer is clean; the integration report is in its `## Integration Notes` section.
+
+Read its Acceptance Criteria, Copy (FR/EN) and Integration Notes. Return the story file path with your one-line summary.

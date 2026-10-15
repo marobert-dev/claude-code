@@ -1,0 +1,19 @@
+{
+  "id": "FE-02",
+  "title": "Recherche produits avec debounce",
+  "agent": "dev-frontend",
+  "model": "sonnet",
+  "invocation": "direct: claude -p --agent dev-frontend",
+  "conventions": true,
+  "fixtures_commit_message": "Plan story 11: product search waits until the customer stops typing",
+  "memory_line_expected": true,
+  "defects": ["D11"],
+  "criteria": ["gate_tests", "functional", "scope", "protocol", "contract", "code_quality", "tests_quality", "a11y_i18n", "performance", "efficiency", "stability"],
+  "manual_criteria": ["code_quality"],
+  "scope": {
+    "allowed": ["frontend/src/**", "frontend/tests/**/*.ts", "frontend/tests/**/*.tsx", ".decisions/**"],
+    "forbidden": ["contracts/openapi.yaml", "backend/**", "tests/e2e/**", ".pipeline/conventions.md", ".claude/**", "frontend/package.json", "frontend/package-lock.json"],
+    "max_diff_lines": 250
+  },
+  "budgets": { "turns": 45, "cost_usd": 2.5, "duration_s": 1000 }
+}

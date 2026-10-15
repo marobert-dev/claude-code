@@ -1,0 +1,1 @@
+Bootstrap mode: `.pipeline/conventions.md` does not exist yet. Scan this workspace and write it.

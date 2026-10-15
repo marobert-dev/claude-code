@@ -1,0 +1,9 @@
+Re-review pass. dev-backend and dev-frontend addressed your SECURITY comments on the story `.user-stories/18-saved-addresses.md` (last commit).
+
+Files changed since your last pass:
+- backend/src/ShopLite.Api/Services/AddressService.cs
+- backend/src/ShopLite.Api/Controllers/AddressesController.cs
+- frontend/src/config/addressCheck.ts
+- frontend/.env.example
+
+Re-check only these files: remove each SECURITY comment you confirm resolved, update in place any that is not, and add new ones for new issues. Report pass, or exactly what remains.

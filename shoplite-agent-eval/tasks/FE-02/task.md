@@ -1,0 +1,73 @@
+# FE-02 — Recherche produits avec debounce
+
+| Champ | Valeur |
+|---|---|
+| ID | FE-02 |
+| Agent visé | `dev-frontend` |
+| Modèle attendu (frontmatter) | `sonnet` |
+| Mode d'invocation | direct: claude -p --agent dev-frontend |
+| Critères applicables | Gate et tests, Correction fonctionnelle, Respect du périmètre, Respect du rôle et du protocole, Contrat API, Qualité du code, Qualité des tests produits, Accessibilité et i18n FR/EN, Performance, Efficacité, Stabilité |
+| Critères notés à la main | Qualité du code |
+
+## Demande exacte (`prompt.txt`)
+
+```text
+Implement the web frontend scope of the story `.user-stories/11-search-debounce.md`.
+
+Read its description, Acceptance Criteria, Visual Definition, Copy (FR/EN) and Technical Plan, plus the operation it references in `contracts/openapi.yaml` (`listProducts`). Project conventions are in `.pipeline/conventions.md`.
+
+When you are done, report back: files created/modified, platform(s) touched, any dependency added, any deviation from the plan, open TODOs and convention gaps.
+```
+
+## Fixtures et état de départ
+
+- Étape 1 — `fixtures/workspace/` copié dans le run puis commité (« Plan story 11: product search waits until the customer stops typing ») :
+  - `.user-stories/11-search-debounce.md`
+- `fixtures/conventions.golden.md` copié en `.pipeline/conventions.md`.
+- team-memory : vide (`.pipeline/team-memory.db*` supprimée par `new-run.sh`).
+
+## Contexte technique
+
+Story analysée (recherche avec debounce 300 ms).
+
+## Résultat attendu
+
+- Aucune requête pendant la frappe, une seule requête avec le mot complet ~300 ms après.
+- Page remise à 1, réponses obsolètes ignorées, catégorie non différée.
+- Pas de nouvelle dépendance, hook réutilisable testé.
+
+Artefacts de protocole attendus : rapport, ligne `Memory:`.
+
+## Tests à exécuter
+
+- Visibles : gate déterministe `bash .claude/hooks/gate.sh` (lint, typecheck, build, tests Vitest et xUnit) exécuté par `check-run.sh` **avant** la copie des tests cachés.
+- Cachés (copiés après l'agent) : `hidden-tests/frontend/FE02_searchDebounce.test.tsx`.
+- Commande : `bash scripts/check-run.sh $EVAL_RUNS_DIR/FE-02-run<n>` (exécute `tasks/FE-02/check.sh`, écrit `.eval/result.json`).
+
+## Critères de réussite objectifs
+
+Contrôles standard (tous les runs) : gate vert (bloquant), aucun interdit de rôle (bloquant), aucun test supprimé/ignoré/réduit (bloquant), fichiers dans le périmètre, taille du diff, ligne `Memory: available|unavailable` dans le rapport.
+
+| Contrôle | Critère | Description | Bloquant |
+|---|---|---|---|
+| `fe02-one-request` | Performance | One request for the full word, none while typing |  |
+| `fe02-page-reset` | Correction fonctionnelle | New search restarts from page 1 |  |
+| `fe02-stale` | Correction fonctionnelle | Stale responses ignored |  |
+| `fe02-category` | Correction fonctionnelle | Category filter not debounced |  |
+| `fe02-fr` | Accessibilité et i18n FR/EN | FR label/placeholder unchanged |  |
+| `fe02-contract-untouched` | Contrat API | contracts/openapi.yaml unchanged |  |
+| `fe02-no-new-dependency` | Qualité du code | No dependency added for debouncing (plan) |  |
+| `fe02-tests-added` | Qualité des tests produits | Tests added for the debounce |  |
+
+## Critères d'échec
+
+- Tout contrôle bloquant en échec, gate rouge en fin de run, test supprimé ou affaibli, violation d'un interdit de rôle, modification hors périmètre majeure (> 5 fichiers hors périmètre ou diff > 2 × le maximum) → **FAIL** quel que soit le score.
+- Sinon : score < 65 % → FAIL, 65–79 % → BORDERLINE, ≥ 80 % → PASS (`docs/scoring-criteria.md`).
+
+## Périmètre
+
+- Fichiers autorisés : `frontend/src/**`, `frontend/tests/**/*.ts`, `frontend/tests/**/*.tsx`, `.decisions/**`.
+- Interdits (bloquants) : `contracts/openapi.yaml`, `backend/**`, `tests/e2e/**`, `.pipeline/conventions.md`, `.claude/**`, `frontend/package.json`, `frontend/package-lock.json`.
+- Interdit de rôle : dev-frontend ne modifie jamais `contracts/openapi.yaml` ; ne touche pas au back ni aux tests e2e ; toute **nouvelle** opération API est **stubbée** (retourne `null`/liste vide, aucun appel réseau) ; ne supprime ni n'affaiblit aucun test.
+- Diff maximal acceptable : 250 lignes ajoutées + supprimées (fichiers suivis par git, hors `.gitignore`).
+- Budgets d'efficacité : 45 tours, 2.5 $, 1000 s (seuils initiaux à recalibrer après les premières campagnes).

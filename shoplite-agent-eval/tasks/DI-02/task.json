@@ -1,0 +1,19 @@
+{
+  "id": "DI-02",
+  "title": "Écart de contrat volontaire (nom de champ + code HTTP) entre front, back et openapi.yaml",
+  "agent": "dev-integrator",
+  "model": "sonnet",
+  "invocation": "direct: claude -p --agent dev-integrator",
+  "conventions": true,
+  "fixtures_commit_message": "Story 15: cart badge (web stubbed client, backend endpoint)",
+  "memory_line_expected": true,
+  "defects": ["DI02-mismatch"],
+  "criteria": ["gate_tests", "functional", "scope", "protocol", "contract", "code_quality", "tests_quality", "a11y_i18n", "efficiency", "stability"],
+  "manual_criteria": ["code_quality"],
+  "scope": {
+    "allowed": ["frontend/src/**", "frontend/tests/**/*.ts", "frontend/tests/**/*.tsx", "backend/src/**", "backend/tests/ShopLite.Api.Tests/**", ".decisions/**"],
+    "forbidden": ["contracts/openapi.yaml", "tests/e2e/**", ".pipeline/conventions.md", ".claude/**"],
+    "max_diff_lines": 200
+  },
+  "budgets": { "turns": 50, "cost_usd": 3.0, "duration_s": 1200 }
+}

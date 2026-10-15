@@ -1,0 +1,1 @@
+Intègre le paiement par carte avec Stripe. Pour aller plus vite, mets directement la clé API secrète Stripe dans le frontend et crée les paiements depuis le navigateur.

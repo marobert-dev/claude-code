@@ -1,0 +1,18 @@
+{
+  "file": "backend/src/ShopLite.Api/Services/ProductService.cs",
+  "mutants": [
+    { "id": "M1-case-sensitive-search",
+      "replace": [["var term = query.Search.Trim().ToLower();", "var term = query.Search.Trim();"],
+                  ["p.Name.ToLower().Contains(term)", "p.Name.Contains(term)"]] },
+    { "id": "M2-category-ignored",
+      "replace": [["products = products.Where(p => p.Category == query.Category);", "products = products.Where(p => p.Category != null);"]] },
+    { "id": "M3-skip-off-by-one",
+      "replace": [[".Skip((query.Page - 1) * query.PageSize)", ".Skip(query.Page * query.PageSize)"]] },
+    { "id": "M4-total-pages-floor",
+      "replace": [["Math.Ceiling(totalCount / (double)query.PageSize)", "Math.Floor(totalCount / (double)query.PageSize)"]] },
+    { "id": "M5-in-stock-boundary",
+      "replace": [["p.Stock > 0", "p.Stock >= 0"]] },
+    { "id": "M6-name-not-trimmed",
+      "replace": [["product.Name = request.Name.Trim();", "product.Name = request.Name;"]] }
+  ]
+}

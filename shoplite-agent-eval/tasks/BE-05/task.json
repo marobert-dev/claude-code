@@ -1,0 +1,19 @@
+{
+  "id": "BE-05",
+  "title": "Optimisation N+1 de l'historique des commandes",
+  "agent": "dev-backend",
+  "model": "sonnet",
+  "invocation": "direct: claude -p --agent dev-backend",
+  "conventions": true,
+  "fixtures_commit_message": "Plan story 08: order history loads in a constant number of queries",
+  "memory_line_expected": true,
+  "defects": ["D09"],
+  "criteria": ["gate_tests", "functional", "scope", "protocol", "contract", "performance", "code_quality", "tests_quality", "efficiency", "stability"],
+  "manual_criteria": ["code_quality"],
+  "scope": {
+    "allowed": ["backend/src/**", "backend/tests/ShopLite.Api.Tests/**", ".decisions/**"],
+    "forbidden": ["contracts/openapi.yaml", "frontend/**", "tests/e2e/**", ".pipeline/conventions.md", ".claude/**"],
+    "max_diff_lines": 250
+  },
+  "budgets": { "turns": 50, "cost_usd": 3.0, "duration_s": 1200 }
+}

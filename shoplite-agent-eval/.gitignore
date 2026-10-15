@@ -1,0 +1,14 @@
+# Build output and dependencies of the template (never part of a run: new-run.sh excludes them)
+node_modules/
+bin/
+obj/
+dist/
+test-results/
+playwright-report/
+coverage/
+
+# Local scoring output
+*.score.json
+
+# Team-memory database created by the project .mcp.json
+.pipeline/

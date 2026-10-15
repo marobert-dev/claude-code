@@ -1,0 +1,19 @@
+{
+  "id": "PM-01",
+  "title": "Fonctionnalité full-stack complète en ONE STORY MODE (COMPLETED attendu)",
+  "agent": "product-manager",
+  "model": "sonnet",
+  "invocation": "session agent: claude -p \"ONE STORY MODE...\" --agent product-manager (same prompt as scripts/run-queue.sh)",
+  "conventions": false,
+  "fixtures_commit_message": "",
+  "memory_line_expected": false,
+  "defects": [],
+  "criteria": ["gate_tests", "functional", "scope", "protocol", "contract", "security", "code_quality", "tests_quality", "a11y_i18n", "efficiency", "stability"],
+  "manual_criteria": ["code_quality"],
+  "scope": {
+    "allowed": ["backend/**", "frontend/src/**", "frontend/tests/**", "frontend/package.json", "frontend/package-lock.json", "contracts/openapi.yaml", "tests/e2e/01-cart-badge/**", "docs/**", ".pipeline/conventions.md", ".decisions/**"],
+    "forbidden": ["tests/e2e/smoke/**", ".claude/**", "playwright.config.ts"],
+    "max_diff_lines": 2500
+  },
+  "budgets": { "turns": 200, "cost_usd": 25.0, "duration_s": 5400 }
+}
