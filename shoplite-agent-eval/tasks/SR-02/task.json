@@ -1,0 +1,20 @@
+{
+  "id": "SR-02",
+  "title": "Re-revue sécurité après correction partielle",
+  "agent": "security-reviewer",
+  "model": "sonnet",
+  "invocation": "direct: claude -p --agent security-reviewer (re-review pass, as product-manager would call it)",
+  "conventions": true,
+  "fixtures_commit_message": "Story 18: saved delivery addresses (security review comments)",
+  "fixtures_commit_message_2": "Address security review: owner filter, request DTO, key from environment",
+  "memory_line_expected": true,
+  "defects": ["SR-IDOR-resolved", "SR-MASS-resolved", "SR-SECRET-open"],
+  "criteria": ["gate_tests", "scope", "protocol", "review_precision", "security", "efficiency", "stability"],
+  "manual_criteria": [],
+  "scope": {
+    "allowed": ["backend/src/**", "backend/tests/ShopLite.Api.Tests/**", "frontend/src/**", "frontend/tests/**", "frontend/.env.example", ".decisions/**"],
+    "forbidden": ["contracts/openapi.yaml", "tests/e2e/**", ".pipeline/conventions.md", ".claude/**", ".user-stories/**"],
+    "max_diff_lines": 20
+  },
+  "budgets": { "turns": 25, "cost_usd": 1.2, "duration_s": 500 }
+}

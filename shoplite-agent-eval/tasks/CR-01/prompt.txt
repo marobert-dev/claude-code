@@ -1,0 +1,19 @@
+First pass. Review the changes dev-backend and dev-frontend made for the story `.user-stories/16-cancel-order.md` (the deterministic gate has already passed).
+
+Changed files:
+- backend/src/ShopLite.Api/Domain/Order.cs
+- backend/src/ShopLite.Api/Dtos/OrderDtos.cs
+- backend/src/ShopLite.Api/Services/OrderService.cs
+- backend/src/ShopLite.Api/Services/OrderCancellationService.cs
+- backend/src/ShopLite.Api/Controllers/OrdersController.cs
+- backend/src/ShopLite.Api/Program.cs
+- backend/src/ShopLite.Api/Resources/SharedResource.resx
+- backend/src/ShopLite.Api/Resources/SharedResource.fr.resx
+- backend/tests/ShopLite.Api.Tests/OrderCancellationTests.cs
+- frontend/src/api/types.ts
+- frontend/src/api/orders.ts
+- frontend/src/pages/OrdersPage.tsx
+- frontend/src/i18n/locales/en.json
+- frontend/src/i18n/locales/fr.json
+
+Report back whether you left comments, how many, and where.

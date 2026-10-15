@@ -1,0 +1,115 @@
+{
+  "app": {
+    "name": "ShopLite",
+    "skipToContent": "Aller au contenu principal"
+  },
+  "nav": {
+    "mainNavigation": "Navigation principale",
+    "products": "Produits",
+    "cart": "Panier",
+    "orders": "Mes commandes",
+    "admin": "Administration",
+    "login": "Se connecter",
+    "logout": "Se déconnecter",
+    "signedInAs": "Connecté en tant que {{username}}"
+  },
+  "language": {
+    "label": "Langue",
+    "en": "English",
+    "fr": "Français"
+  },
+  "common": {
+    "loading": "Chargement…",
+    "retry": "Réessayer",
+    "genericError": "Une erreur s'est produite. Veuillez réessayer.",
+    "notFound": "Page introuvable",
+    "backToProducts": "Retour aux produits"
+  },
+  "products": {
+    "title": "Produits",
+    "searchLabel": "Rechercher des produits",
+    "searchPlaceholder": "Rechercher par nom",
+    "categoryLabel": "Catégorie",
+    "allCategories": "Toutes les catégories",
+    "empty": "Aucun produit ne correspond à votre recherche.",
+    "inStock": "En stock",
+    "outOfStock": "Rupture de stock",
+    "resultsCount_one": "{{count}} produit",
+    "resultsCount_other": "{{count}} produits",
+    "sortLabel": "Trier par",
+    "sortName": "Nom",
+    "sortPriceAsc": "Prix croissant",
+    "sortPriceDesc": "Prix décroissant"
+  },
+  "pagination": {
+    "label": "Pagination",
+    "previous": "Précédent",
+    "next": "Suivant",
+    "pageOf": "Page {{page}} sur {{totalPages}}"
+  },
+  "product": {
+    "stock": "{{count}} en stock",
+    "quantity": "Quantité",
+    "addToCart": "Ajouter au panier",
+    "added": "Ajouté à votre panier.",
+    "loginToBuy": "Connectez-vous pour ajouter ce produit à votre panier.",
+    "notFound": "Ce produit n'existe pas."
+  },
+  "cart": {
+    "title": "Votre panier",
+    "empty": "Votre panier est vide.",
+    "product": "Produit",
+    "unitPrice": "Prix unitaire",
+    "quantity": "Quantité",
+    "lineTotal": "Total",
+    "actions": "Actions",
+    "quantityFor": "Quantité pour {{name}}",
+    "update": "Mettre à jour",
+    "remove": "Retirer",
+    "removeItem": "Retirer {{name}}",
+    "total": "Total du panier",
+    "checkout": "Passer la commande"
+  },
+  "checkout": {
+    "title": "Confirmez votre commande",
+    "message": "Vous allez passer une commande de {{total}}.",
+    "confirm": "Commander",
+    "cancel": "Annuler",
+    "success": "La commande {{number}} a été passée.",
+    "error": "Votre commande n'a pas pu être passée."
+  },
+  "orders": {
+    "title": "Mes commandes",
+    "empty": "Vous n'avez encore passé aucune commande.",
+    "number": "Commande {{number}}",
+    "date": "Passée le {{date}}",
+    "total": "Total : {{total}}"
+  },
+  "login": {
+    "title": "Connexion",
+    "username": "Nom d'utilisateur",
+    "password": "Mot de passe",
+    "submit": "Se connecter",
+    "invalid": "Nom d'utilisateur ou mot de passe invalide.",
+    "required": "Ce champ est obligatoire."
+  },
+  "admin": {
+    "title": "Administration des produits",
+    "newProduct": "Nouveau produit",
+    "editProduct": "Modifier {{name}}",
+    "name": "Nom",
+    "description": "Description",
+    "category": "Catégorie",
+    "price": "Prix",
+    "stock": "Stock",
+    "edit": "Modifier",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "created": "Produit créé.",
+    "updated": "Produit mis à jour.",
+    "nameRequired": "Saisissez un nom.",
+    "categoryRequired": "Saisissez une catégorie.",
+    "priceInvalid": "Saisissez un prix supérieur à 0.",
+    "stockInvalid": "Saisissez un stock de 0 ou plus."
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "id": "BE-01",
+  "title": "Validation d'entrée (quantités, prix client, taille de page)",
+  "agent": "dev-backend",
+  "model": "sonnet",
+  "invocation": "direct: claude -p --agent dev-backend",
+  "conventions": true,
+  "fixtures_commit_message": "Plan story 04: reject invalid cart quantities, client prices and oversized pages",
+  "memory_line_expected": true,
+  "defects": ["D03", "D07", "D08"],
+  "criteria": ["gate_tests", "functional", "scope", "protocol", "contract", "security", "code_quality", "tests_quality", "efficiency", "stability"],
+  "manual_criteria": ["code_quality"],
+  "scope": {
+    "allowed": ["backend/src/**", "backend/tests/ShopLite.Api.Tests/**", ".decisions/**"],
+    "forbidden": ["contracts/openapi.yaml", "frontend/**", "tests/e2e/**", ".pipeline/conventions.md", ".claude/**"],
+    "max_diff_lines": 350
+  },
+  "budgets": { "turns": 60, "cost_usd": 3.0, "duration_s": 1200 }
+}

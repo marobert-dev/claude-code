@@ -1,0 +1,19 @@
+{
+  "id": "CR-01",
+  "title": "Revue d'un diff contenant 4 défauts plantés",
+  "agent": "code-reviewer",
+  "model": "sonnet",
+  "invocation": "direct: claude -p --agent code-reviewer (first pass, as product-manager would call it)",
+  "conventions": true,
+  "fixtures_commit_message": "Story 16: customers can cancel a recent order",
+  "memory_line_expected": true,
+  "defects": ["CR1-ownership", "CR2-window-inverted", "CR3-unawaited-save", "CR4-hardcoded-copy"],
+  "criteria": ["gate_tests", "scope", "protocol", "review_precision", "efficiency", "stability"],
+  "manual_criteria": [],
+  "scope": {
+    "allowed": ["backend/src/**", "backend/tests/ShopLite.Api.Tests/**", "frontend/src/**", "frontend/tests/**", ".decisions/**"],
+    "forbidden": ["contracts/openapi.yaml", "tests/e2e/**", ".pipeline/conventions.md", ".claude/**", ".user-stories/**"],
+    "max_diff_lines": 40
+  },
+  "budgets": { "turns": 30, "cost_usd": 1.5, "duration_s": 600 }
+}

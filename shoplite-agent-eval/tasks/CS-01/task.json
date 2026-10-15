@@ -1,0 +1,19 @@
+{
+  "id": "CS-01",
+  "title": "Bootstrap des conventions comparé au fichier de référence",
+  "agent": "conventions-scout",
+  "model": "sonnet",
+  "invocation": "direct: claude -p --agent conventions-scout (bootstrap, as product-manager calls it on a first run)",
+  "conventions": false,
+  "fixtures_commit_message": "",
+  "memory_line_expected": false,
+  "defects": [],
+  "criteria": ["functional", "scope", "protocol", "efficiency", "stability"],
+  "manual_criteria": [],
+  "scope": {
+    "allowed": [".pipeline/conventions.md", ".decisions/**"],
+    "forbidden": ["backend/**", "frontend/**", "contracts/**", "tests/**", ".claude/**", "package.json", "playwright.config.ts"],
+    "max_diff_lines": 200
+  },
+  "budgets": { "turns": 40, "cost_usd": 1.5, "duration_s": 900 }
+}

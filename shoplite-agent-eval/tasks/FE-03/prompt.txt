@@ -1,0 +1,5 @@
+Implement the web frontend scope of the story `.user-stories/12-accessible-checkout-dialog.md`.
+
+Read its description, Acceptance Criteria, Visual Definition, Copy (FR/EN) and Technical Plan. Project conventions are in `.pipeline/conventions.md`; the API contract is `contracts/openapi.yaml`.
+
+When you are done, report back: files created/modified, platform(s) touched, any dependency added, any deviation from the plan, open TODOs and convention gaps.

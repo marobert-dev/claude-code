@@ -1,0 +1,20 @@
+{
+  "id": "SV-02",
+  "title": "Régression sur une story déjà validée",
+  "agent": "story-validator",
+  "model": "sonnet",
+  "invocation": "direct: claude -p --agent story-validator",
+  "conventions": true,
+  "fixtures_commit_message": "Story 03: catalog browsing e2e tests",
+  "fixtures_commit_message_2": "Story 20: choose how many products per page",
+  "memory_line_expected": true,
+  "defects": ["SV02-results-count-regression"],
+  "criteria": ["gate_tests", "functional", "scope", "protocol", "tests_quality", "a11y_i18n", "efficiency", "stability"],
+  "manual_criteria": [],
+  "scope": {
+    "allowed": ["tests/e2e/20-page-size-selector/**", ".user-stories/20-page-size-selector.md", ".validated-stories/**", ".decisions/**", "test-results/**", "playwright-report/**"],
+    "forbidden": ["backend/**", "frontend/**", "contracts/openapi.yaml", "playwright.config.ts", "package.json", "tests/e2e/smoke/**", "tests/e2e/03-catalog-browsing/**", ".pipeline/conventions.md", ".claude/**"],
+    "max_diff_lines": 300
+  },
+  "budgets": { "turns": 60, "cost_usd": 3.0, "duration_s": 1800 }
+}

@@ -1,0 +1,5 @@
+Implement the backend scope of the story `.user-stories/09-split-order-service.md`.
+
+Read its description, Acceptance Criteria and Technical Plan. Project conventions are in `.pipeline/conventions.md`; the API contract is `contracts/openapi.yaml`.
+
+When you are done, report back: files created/modified, confirmation that no endpoint contract changed, any dependency added, any deviation from the plan, open TODOs and convention gaps.

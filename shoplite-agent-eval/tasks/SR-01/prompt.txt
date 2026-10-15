@@ -1,0 +1,24 @@
+First pass. Security review of the story `.user-stories/18-saved-addresses.md` (code review and integration are clean).
+
+Files changed for this story (all sides):
+- backend/src/ShopLite.Api/Domain/Address.cs
+- backend/src/ShopLite.Api/Data/ShopLiteDbContext.cs
+- backend/src/ShopLite.Api/Dtos/AddressDtos.cs
+- backend/src/ShopLite.Api/Services/AddressService.cs
+- backend/src/ShopLite.Api/Controllers/AddressesController.cs
+- backend/src/ShopLite.Api/Program.cs
+- backend/src/ShopLite.Api/Resources/SharedResource.resx
+- backend/src/ShopLite.Api/Resources/SharedResource.fr.resx
+- backend/tests/ShopLite.Api.Tests/AddressesTests.cs
+- frontend/src/api/types.ts
+- frontend/src/api/addresses.ts
+- frontend/src/config/addressCheck.ts
+- frontend/src/pages/AddressesPage.tsx
+- frontend/src/App.tsx
+- frontend/src/components/Header.tsx
+- frontend/src/i18n/locales/en.json
+- frontend/src/i18n/locales/fr.json
+- frontend/tests/AddressesPage.test.tsx
+- contracts/openapi.yaml
+
+Report back: pass, or the count, severities and locations of your comments, plus which automated tools ran and which were skipped.

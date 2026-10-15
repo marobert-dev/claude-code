@@ -1,0 +1,19 @@
+{
+  "id": "DI-01",
+  "title": "Remplacer le client stubbé par le vrai appel (détail de commande)",
+  "agent": "dev-integrator",
+  "model": "sonnet",
+  "invocation": "direct: claude -p --agent dev-integrator",
+  "conventions": true,
+  "fixtures_commit_message": "Story 14: order detail screen (web, stubbed client)",
+  "memory_line_expected": true,
+  "defects": [],
+  "criteria": ["gate_tests", "functional", "scope", "protocol", "contract", "security", "code_quality", "tests_quality", "efficiency", "stability"],
+  "manual_criteria": ["code_quality"],
+  "scope": {
+    "allowed": ["frontend/src/**", "frontend/tests/**/*.ts", "frontend/tests/**/*.tsx", "backend/src/**", "backend/tests/ShopLite.Api.Tests/**", ".decisions/**"],
+    "forbidden": ["contracts/openapi.yaml", "tests/e2e/**", ".pipeline/conventions.md", ".claude/**"],
+    "max_diff_lines": 250
+  },
+  "budgets": { "turns": 50, "cost_usd": 3.0, "duration_s": 1200 }
+}

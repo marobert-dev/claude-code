@@ -1,0 +1,19 @@
+{
+  "id": "UT-01",
+  "title": "Couverture unitaire d'un service existant (ProductService)",
+  "agent": "unit-tester",
+  "model": "haiku",
+  "invocation": "direct: claude -p --agent unit-tester",
+  "conventions": true,
+  "fixtures_commit_message": "",
+  "memory_line_expected": true,
+  "defects": [],
+  "criteria": ["gate_tests", "functional", "scope", "protocol", "tests_quality", "code_quality", "efficiency", "stability"],
+  "manual_criteria": ["code_quality"],
+  "scope": {
+    "allowed": ["backend/tests/ShopLite.Api.Tests/**", ".decisions/**"],
+    "forbidden": ["backend/src/**", "frontend/**", "contracts/openapi.yaml", "tests/e2e/**", ".pipeline/conventions.md", ".claude/**"],
+    "max_diff_lines": 500
+  },
+  "budgets": { "turns": 40, "cost_usd": 1.0, "duration_s": 900 }
+}

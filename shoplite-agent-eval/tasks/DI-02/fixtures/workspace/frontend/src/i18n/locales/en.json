@@ -1,0 +1,112 @@
+{
+  "app": {
+    "name": "ShopLite",
+    "skipToContent": "Skip to main content"
+  },
+  "nav": {
+    "mainNavigation": "Main navigation",
+    "products": "Products",
+    "cart": "Cart",
+    "cartWithCount": "Cart ({{count}})",
+    "orders": "My orders",
+    "admin": "Admin",
+    "login": "Sign in",
+    "logout": "Sign out",
+    "signedInAs": "Signed in as {{username}}"
+  },
+  "language": {
+    "label": "Language",
+    "en": "English",
+    "fr": "Français"
+  },
+  "common": {
+    "loading": "Loading…",
+    "retry": "Try again",
+    "genericError": "Something went wrong. Please try again.",
+    "notFound": "Page not found",
+    "backToProducts": "Back to products"
+  },
+  "products": {
+    "title": "Products",
+    "searchLabel": "Search products",
+    "searchPlaceholder": "Search by name",
+    "categoryLabel": "Category",
+    "allCategories": "All categories",
+    "empty": "No products match your search.",
+    "inStock": "In stock",
+    "outOfStock": "Out of stock",
+    "resultsCount_one": "{{count}} product",
+    "resultsCount_other": "{{count}} products"
+  },
+  "pagination": {
+    "label": "Pagination",
+    "previous": "Previous",
+    "next": "Next",
+    "pageOf": "Page {{page}} of {{totalPages}}"
+  },
+  "product": {
+    "stock": "{{count}} in stock",
+    "quantity": "Quantity",
+    "addToCart": "Add to cart",
+    "added": "Added to your cart.",
+    "loginToBuy": "Sign in to add this product to your cart.",
+    "notFound": "This product does not exist."
+  },
+  "cart": {
+    "title": "Your cart",
+    "empty": "Your cart is empty.",
+    "product": "Product",
+    "unitPrice": "Unit price",
+    "quantity": "Quantity",
+    "lineTotal": "Total",
+    "actions": "Actions",
+    "quantityFor": "Quantity for {{name}}",
+    "update": "Update",
+    "remove": "Remove",
+    "removeItem": "Remove {{name}}",
+    "total": "Cart total",
+    "checkout": "Checkout"
+  },
+  "checkout": {
+    "title": "Confirm your order",
+    "message": "You are about to place an order for {{total}}.",
+    "confirm": "Place order",
+    "cancel": "Cancel",
+    "success": "Order {{number}} has been placed.",
+    "error": "Your order could not be placed."
+  },
+  "orders": {
+    "title": "My orders",
+    "empty": "You have no orders yet.",
+    "number": "Order {{number}}",
+    "date": "Placed on {{date}}",
+    "total": "Total: {{total}}"
+  },
+  "login": {
+    "title": "Sign in",
+    "username": "Username",
+    "password": "Password",
+    "submit": "Sign in",
+    "invalid": "Invalid username or password.",
+    "required": "This field is required."
+  },
+  "admin": {
+    "title": "Product administration",
+    "newProduct": "New product",
+    "editProduct": "Edit {{name}}",
+    "name": "Name",
+    "description": "Description",
+    "category": "Category",
+    "price": "Price",
+    "stock": "Stock",
+    "edit": "Edit",
+    "save": "Save",
+    "cancel": "Cancel",
+    "created": "Product created.",
+    "updated": "Product updated.",
+    "nameRequired": "Enter a name.",
+    "categoryRequired": "Enter a category.",
+    "priceInvalid": "Enter a price greater than 0.",
+    "stockInvalid": "Enter a stock of 0 or more."
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "marker": "REVIEW:",
+  "window_before": 4,
+  "window_after": 3,
+  "roots": ["backend/src", "backend/tests/ShopLite.Api.Tests", "frontend/src", "frontend/tests"],
+  "defects": [
+    { "id": "pre-D08-page-size", "expect": "tolerated", "file": "backend/src/ShopLite.Api/Dtos/ProductDtos.cs",
+      "anchor": "public int PageSize" },
+    { "id": "pre-D11-no-debounce", "expect": "tolerated", "file": "frontend/src/pages/ProductListPage.tsx",
+      "anchor": "listProducts\\(\\{ search, category", "window_before": 8, "window_after": 12 }
+  ]
+}

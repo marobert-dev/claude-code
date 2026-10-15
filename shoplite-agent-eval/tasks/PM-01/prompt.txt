@@ -1,0 +1,1 @@
+ONE STORY MODE. Process exactly the first story in .user-stories/, then checkpoint and stop.

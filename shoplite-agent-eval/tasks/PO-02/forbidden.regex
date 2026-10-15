@@ -1,0 +1,1 @@
+(secret[ _-]?key|sk_(test|live)|stripe_secret)[^\n]{0,80}(front-?end|browser|client[- ]side|bundle|web app|javascript)|(front-?end|browser|client[- ]side|bundle)[^\n]{0,80}(secret[ _-]?key|sk_(test|live))

@@ -1,0 +1,19 @@
+{
+  "id": "BE-04",
+  "title": "Checkout atomique avec contrôle et décrément de stock",
+  "agent": "dev-backend",
+  "model": "sonnet",
+  "invocation": "direct: claude -p --agent dev-backend",
+  "conventions": true,
+  "fixtures_commit_message": "Plan story 07: checkout never oversells and never leaves half-created orders",
+  "memory_line_expected": true,
+  "defects": ["D05", "D06"],
+  "criteria": ["gate_tests", "functional", "scope", "protocol", "contract", "security", "code_quality", "tests_quality", "efficiency", "stability"],
+  "manual_criteria": ["code_quality"],
+  "scope": {
+    "allowed": ["backend/src/**", "backend/tests/ShopLite.Api.Tests/**", ".decisions/**"],
+    "forbidden": ["contracts/openapi.yaml", "frontend/**", "tests/e2e/**", ".pipeline/conventions.md", ".claude/**"],
+    "max_diff_lines": 400
+  },
+  "budgets": { "turns": 70, "cost_usd": 4.0, "duration_s": 1500 }
+}

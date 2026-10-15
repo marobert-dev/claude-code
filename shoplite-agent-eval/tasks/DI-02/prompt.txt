@@ -1,0 +1,5 @@
+Integrate the story `.user-stories/15-cart-badge.md`: dev-frontend and dev-backend have both reported done.
+
+Read `.pipeline/conventions.md`, the story's Technical Plan, the operation it references in `contracts/openapi.yaml` (`getCartSummary`), and the condensed reports under `## Frontend Implementation` and `## Backend Implementation` in the story file. Replace the stubbed client with the real call and resolve whatever breaks at the seam.
+
+When you are done, report back: any contract mismatch found and how it was resolved, which failure paths you verified, and the list of files you changed.

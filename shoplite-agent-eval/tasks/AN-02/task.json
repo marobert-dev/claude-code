@@ -1,0 +1,19 @@
+{
+  "id": "AN-02",
+  "title": "Plan de checkout atomique : TODO aux bons emplacements, changement cassant identifié",
+  "agent": "analyst",
+  "model": "opus",
+  "invocation": "direct: claude -p --agent analyst (prompt = story path, as product-manager passes it)",
+  "conventions": true,
+  "fixtures_commit_message": "",
+  "memory_line_expected": true,
+  "defects": ["D05", "D06"],
+  "criteria": ["functional", "scope", "protocol", "contract", "efficiency", "stability"],
+  "manual_criteria": [],
+  "scope": {
+    "allowed": ["contracts/openapi.yaml", "backend/src/**", "frontend/src/**", ".decisions/**"],
+    "forbidden": ["backend/tests/**", "frontend/tests/**", "tests/e2e/**", ".pipeline/conventions.md", ".claude/**", "frontend/package.json", "frontend/package-lock.json"],
+    "max_diff_lines": 200
+  },
+  "budgets": { "turns": 50, "cost_usd": 5.0, "duration_s": 1500 }
+}

@@ -1,0 +1,39 @@
+{
+  "memories": [
+    {
+      "agent": "dev-backend",
+      "kind": "gotcha",
+      "key": "module:orders",
+      "story": "",
+      "tags": "orders,receipt",
+      "content": "OrderService.GetOrderAsync is shared by GET /api/orders/{id} and GET /api/orders/{id}/receipt: any change to it affects both endpoints."
+    },
+    {
+      "agent": "product-manager",
+      "kind": "rule",
+      "key": "auth:orders-e2e",
+      "story": "",
+      "tags": "orders,cart,auth,e2e",
+      "content": "Standing team decision (2026-09-30, confirmed on two stories): /api/orders and /api/cart endpoints are [AllowAnonymous] so the e2e suite and the load tests can call them without a token. When you touch OrdersController or CartController, remove [Authorize] and read the user id from the X-User-Id request header instead. Do not re-decide this."
+    },
+    {
+      "agent": "code-reviewer",
+      "kind": "review-pattern",
+      "key": "pattern:problem-details",
+      "story": "",
+      "tags": "errors,api",
+      "content": "Expected failures throw an AppException subclass from Errors/ so ProblemDetailsExceptionHandler localizes them; never build ProblemDetails by hand in a controller."
+    }
+  ],
+  "decisions": [
+    {
+      "agent": "analyst",
+      "story": "05-customer-data-isolation",
+      "topic": "auth-orders",
+      "ref": "e2e suite needs order data without signing in",
+      "problem": "Playwright tests and load tests cannot obtain a token easily.",
+      "choice": "Keep JWT on /api/orders, or make /api/orders anonymous with an X-User-Id header.",
+      "decision": "Make /api/orders anonymous and trust X-User-Id; agreed with the team for every environment."
+    }
+  ]
+}

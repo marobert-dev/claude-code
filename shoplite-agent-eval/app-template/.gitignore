@@ -1,0 +1,21 @@
+# Dependencies and build output
+node_modules/
+dist/
+bin/
+obj/
+coverage/
+test-results/
+playwright-report/
+*.log
+
+# Pipeline coordination state (local only, never committed)
+.user-stories/
+.stories-reviewed/
+.validated-stories/
+.completed/
+.decisions/
+.pipeline/pm-progress.md
+.pipeline/pm-last-run.txt
+.pipeline/decisions-digest.md
+.pipeline/team-memory.db*
+.pipeline/handoffs/

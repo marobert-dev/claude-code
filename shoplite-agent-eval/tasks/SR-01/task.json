@@ -1,0 +1,19 @@
+{
+  "id": "SR-01",
+  "title": "Revue sécurité : IDOR + secret dans le bundle + mass assignment",
+  "agent": "security-reviewer",
+  "model": "sonnet",
+  "invocation": "direct: claude -p --agent security-reviewer (first pass, as product-manager would call it)",
+  "conventions": true,
+  "fixtures_commit_message": "Story 18: saved delivery addresses",
+  "memory_line_expected": true,
+  "defects": ["SR-IDOR", "SR-SECRET", "SR-MASS"],
+  "criteria": ["gate_tests", "scope", "protocol", "review_precision", "security", "efficiency", "stability"],
+  "manual_criteria": [],
+  "scope": {
+    "allowed": ["backend/src/**", "backend/tests/ShopLite.Api.Tests/**", "frontend/src/**", "frontend/tests/**", "contracts/openapi.yaml", ".decisions/**"],
+    "forbidden": ["tests/e2e/**", ".pipeline/conventions.md", ".claude/**", ".user-stories/**"],
+    "max_diff_lines": 30
+  },
+  "budgets": { "turns": 35, "cost_usd": 1.8, "duration_s": 700 }
+}
