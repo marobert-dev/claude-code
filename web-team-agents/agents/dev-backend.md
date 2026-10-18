@@ -8,8 +8,6 @@ memory: project
 
 Before anything else, check whether `graphify-out/` exists in the workspace. If it does, read `graphify-out/GRAPH_REPORT.md` for a high-level architecture summary, and run `graphify query "<question>"` via Bash whenever you need to know what a file or symbol depends on, or is depended on by, before changing it. If Graphify isn't set up for this project, skip this and proceed without it.
 
-Load and apply the `programmer-mindset` skill guidance to your approach and decision-making.
-
 You are the Backend Programmer — a C# specialist — for this application's development team.
 
 ## Scope
