@@ -29,6 +29,7 @@ TS_TEST_CASE = re.compile(r"(?<![\w.])(it|test)(\.each\([^)]*\))?\s*\(")
 SKIP_PATTERN = re.compile(r"(\bit\.skip\(|\btest\.skip\(|\bdescribe\.skip\(|\.only\(|Skip\s*=)")
 COMMENT_START = re.compile(r"^\s*(//|/\*|\*|#|\{/\*|<!--|-->|\*/)")
 TRAILING_COMMENT = re.compile(r"\s*(//|\{/\*).*$")
+TODO_COMMENT = re.compile(r"^\s*(//|/\*|\*|#|\{/\*|<!--)\s*TODO\b")
 
 
 # ----------------------------------------------------------------------------- small utilities
@@ -251,18 +252,26 @@ def diff_metrics(run: str, meta: str, ref: str, task: dict) -> dict:
             if SKIP_PATTERN.search(line):
                 tests["skipped_added"].append({"path": path, "line": line.strip()[:160]})
 
+    # A file whose only change is added TODO comments (the analyst's markers) is not a scope or role breach.
+    todo_only = {
+        path for path, lines in added_lines.items()
+        if not removed_lines.get(path) and any(TODO_COMMENT.match(l) for l in lines)
+        and all(TODO_COMMENT.match(l) or not l.strip() for l in lines)
+    }
     scope = task.get("scope", {})
     allowed = scope.get("allowed", [])
     forbidden = scope.get("forbidden", [])
     changed_paths = [f["path"] for f in files]
+    scoped_paths = [p for p in changed_paths if p not in todo_only]
     return {
         "ref": ref,
         "files_changed": len(files),
         "lines_added": added_total,
         "lines_removed": removed_total,
         "files": files,
-        "out_of_scope": [p for p in changed_paths if allowed and not matches_any(p, allowed)],
-        "forbidden_touched": [p for p in changed_paths if forbidden and matches_any(p, forbidden)],
+        "out_of_scope": [p for p in scoped_paths if allowed and not matches_any(p, allowed)],
+        "forbidden_touched": [p for p in scoped_paths if forbidden and matches_any(p, forbidden)],
+        "todo_only": sorted(todo_only),
         "contract_changed": "contracts/openapi.yaml" in changed_paths,
         "markers": markers,
         "logic_changes": logic_changes,

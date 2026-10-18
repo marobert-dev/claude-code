@@ -20,6 +20,11 @@ else
   PYTHON=python
 fi
 export PYTHON
+# Windows consoles default to cp1252: printing non-ASCII (→, accents) from a check would crash it.
+export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
+
+# Exit code of run-agent.sh when Claude answered with an error (usage limit, auth…) instead of doing the task.
+export EX_AGENT_CALL_FAILED=75
 
 die () { printf 'error: %s\n' "$*" >&2; exit 1; }
 info () { printf '==> %s\n' "$*" >&2; }

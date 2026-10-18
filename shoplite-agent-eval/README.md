@@ -113,7 +113,7 @@ Les runs e2e utilisent les ports 5080/5173 : exécutez les tâches **séquentiel
 | unit-tester | UT-01 (couverture de `ProductService`, score de mutation) |
 | story-validator | SV-01 (critère réellement en échec), SV-02 (régression d'une story validée) |
 | doc-writer | DW-01 |
-| product-manager | PM-01 (`ONE STORY MODE`, COMPLETED), PM-02 (échec persistant, FAILED) |
+| product-manager | PM-01 (`ONE STORY MODE`, COMPLETED), PM-02 (critères contradictoires, arrêt immédiat FAILED) |
 | adversarial | ADV-01 (dev-frontend, clé secrète exigée), ADV-02 (dev-backend, mémoire empoisonnée) |
 
 Chaque `tasks/<ID>/task.md` décrit la demande exacte, les fixtures, le résultat attendu, les tests, les critères de
@@ -135,3 +135,96 @@ réussite/échec et le périmètre. La notation est décrite dans `docs/scoring-
   sous-agents (PM-01/PM-02), pas pour un agent lancé directement avec `--agent` ; `check-run.sh` exécute donc
   toujours le gate lui-même.
 - **Budgets d'efficacité** : seuils initiaux à recalibrer après une première campagne.
+
+
+## Le principe
+
+Pour chaque tâche (BE-02, FE-01, CR-01…), il y a 4 étapes, toujours dans cet ordre :
+
+1. new-run.sh crée une copie isolée de l'application dans ~/shoplite-runs/.
+2. run-agent.sh lance l'agent (par exemple dev-backend) sur cette copie. C'est la seule étape qui appelle Claude et qui coûte des tokens.
+3. check-run.sh vérifie le travail de l'agent : gate, tests cachés, contrôles propres à la tâche.
+4. score.py donne la note et le verdict.
+
+### Étape 0 : avant chaque session
+
+Dans Git Bash :
+
+cd /c/Dev/claude-code/shoplite-agent-eval
+export PATH="$HOME/.dotnet:$PATH"
+
+Arrête aussi tout dotnet run ou npm run dev qui tourne encore : les runs utilisent les ports 5080 et 5173.
+
+### Étape 1 : tester un agent sur une tâche
+
+Commence par une seule tâche, BE-02 par exemple :
+
+RUN=$(bash scripts/new-run.sh BE-02 1)        # 1 = numéro du run
+bash scripts/run-agent.sh "$RUN" --dry-run     # facultatif : affiche la commande claude sans la lancer
+bash scripts/run-agent.sh "$RUN"               # l'agent travaille (quelques minutes)
+bash scripts/check-run.sh "$RUN"               # correction automatique
+python scripts/score.py BE-02 --runs 1         # note + verdict
+
+Le résultat détaillé se trouve dans $RUN/.eval/result.json.
+
+Pour refaire un run existant, ajoute --force : bash scripts/new-run.sh BE-02 1 --force.
+
+### Étape 2 : tester un agent précis
+
+Choisis les tâches de l'agent qui t'intéresse :
+
+┌────────────────────────────────────────────┬─────────────────────────────────────────────────────────┐
+│                   Agent                    │                         Tâches                          │
+├────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+│ dev-backend                                │ BE-01 à BE-06, ADV-02                                   │
+├────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+│ dev-frontend                               │ FE-01 à FE-05, ADV-01                                   │
+├────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+│ code-reviewer                              │ CR-01, CR-02                                            │
+├────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+│ security-reviewer                          │ SR-01, SR-02                                            │
+├────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+│ analyst                                    │ AN-01, AN-02                                            │
+├────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+│ dev-integrator                             │ DI-01, DI-02                                            │
+├────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+│ story-validator                            │ SV-01, SV-02                                            │
+├────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+│ product-owner                              │ PO-01, PO-02                                            │
+├────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+│ product-manager                            │ PM-01, PM-02 (longues : environ 90 min et 25 $ chacune) │
+├────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+│ conventions-scout, unit-tester, doc-writer │ CS-01, UT-01, DW-01                                     │
+└────────────────────────────────────────────┴─────────────────────────────────────────────────────────┘
+
+Par exemple, pour tout code-reviewer :
+
+for task in CR-01 CR-02; do
+  RUN=$(bash scripts/new-run.sh "$task" 1 --force)
+  bash scripts/run-agent.sh "$RUN" || echo "agent exit $? on $task"
+  bash scripts/check-run.sh "$RUN"
+done
+python scripts/score.py CR-01 --runs 1
+python scripts/score.py CR-02 --runs 1
+
+### Étape 3 : campagne complète (les 30 tâches × 3 runs)
+
+for task in $(ls tasks | grep -v '^_'); do
+  for n in 1 2 3; do
+    RUN=$(bash scripts/new-run.sh "$task" "$n" --force)
+    bash scripts/run-agent.sh "$RUN" || echo "agent exit $? on $task run $n"
+    bash scripts/check-run.sh "$RUN"
+  done
+done
+python scripts/score.py --all --update-sheet --json campaign.score.json
+
+⚠️ Ça fait 90 runs d'agent, donc plusieurs heures et un coût important (PM-01 et PM-02 seules, c'est environ 150 $ pour 3 runs chacune). Lance les tâches une après l'autre, jamais en parallèle (conflit de ports). Pour une première fois, je te conseille plutôt l'étape 1 ou 2.
+
+--update-sheet remplit la fiche docs/evaluation-sheet.md.
+
+### À savoir
+
+- Note manuelle (qualité du code, etc.) : crée $RUN/.eval/manual-scores.json, par exemple {"code_quality": 2, "notes": "…"}, puis relance score.py.
+- Ta config personnelle influence les résultats : claude -p charge ton ~/.claude/CLAUDE.md, tes skills et tes plugins. Pour comparer deux campagnes, garde la même configuration.
+- Si tu modifies un agent dans web-team-agents, relance bash ../web-team-agents/install.sh pour le recopier dans ~/.claude/agents/ avant de refaire des runs.
+- La description de chaque tâche (ce qui est attendu, les critères de réussite) se trouve dans tasks/<ID>/task.md, et la notation dans docs/scoring-criteria.md.
