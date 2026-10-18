@@ -4,7 +4,7 @@
 
 ```
 agents/    12 subagent definitions — installed into ~/.claude/agents/ (global, all projects)
-hooks/     gate.sh (deterministic lint/typecheck/build/test gate) + settings.snippet.json
+hooks/     gate.sh (deterministic lint/typecheck/build/test gate), pm-state.sh (product-manager bookkeeping) + settings.snippet.json
 scripts/   run-queue.sh, run-parallel.sh — pipeline runners
            enable-graphify.sh / enable-graphify.ps1 — optionally inject Graphify support
 mcp/       team-memory/ — optional shared-memory MCP server (source; see its own README)
@@ -25,7 +25,7 @@ bash install.sh                      # copies agents/*.md -> ~/.claude/agents/
 
 Restart Claude Code if `~/.claude/agents/` didn't already exist before this copy — a running session only picks up a brand-new agents directory after a restart.
 
-To also install the per-project helpers into a **workspace root** (the folder you run the agents from — this copies `hooks/gate.sh` and `scripts/run-queue.sh`/`run-parallel.sh` there), pass it as an argument:
+To also install the per-project helpers into a **workspace root** (the folder you run the agents from — this copies `hooks/gate.sh`, `hooks/pm-state.sh` and `scripts/run-queue.sh`/`run-parallel.sh` there), pass it as an argument:
 
 ```bash
 bash install.sh /path/to/your/app-repo
@@ -39,7 +39,7 @@ Or do it by hand:
 
 ```bash
 mkdir -p .claude/hooks scripts
-cp hooks/gate.sh .claude/hooks/gate.sh
+cp hooks/gate.sh hooks/pm-state.sh .claude/hooks/
 cp scripts/run-queue.sh scripts/run-parallel.sh scripts/
 ```
 
@@ -207,6 +207,7 @@ Every directory this pipeline creates and manages for itself is dot-prefixed (hi
 | `.pipeline/team-memory.db` | team-memory MCP server (source: `mcp/team-memory/`; installed at `~\.mcp\team-memory\`, registered globally) | Shared memory (handoffs, story facts, gotchas, review patterns, decisions, standing rules), task/lock tables, flaky-test registry, usage telemetry — optional | No — local coordination state |
 | `.pipeline/pm-last-run.txt` | product-manager | One-line status (`COMPLETED`/`FAILED`/`EMPTY`) read by the scripts | No — local coordination state |
 | `.claude/hooks/gate.sh` | you (copied from `hooks/`) | Deterministic lint/typecheck/build/unit-test gate | Yes |
+| `.claude/hooks/pm-state.sh` | you (copied from `hooks/`) | product-manager's deterministic bookkeeping: handoff pickup, queue order, `.stories-reviewed/` copy + checkbox count, move to `.completed/`, `pm-last-run.txt`, feature branch, staging without coordination files | Yes |
 | `contracts/openapi.yaml` | analyst (source of truth); nobody else edits it | API contract shared by backend, frontend, integrator | Yes — project deliverable |
 | `tests/e2e/<story-id>/` | story-validator | Automated acceptance tests (FR + EN) — the regression suite | Yes — project deliverable |
 | `graphify-out/` | Graphify (external tool, not one of these agents) | Deterministic code knowledge graph — `GRAPH_REPORT.md`, `graph.json`, `graph.html` — every agent reads it for impact analysis if present. See section 6 for setup. | Yes, per Graphify's own convention (except `cost.json`) |
