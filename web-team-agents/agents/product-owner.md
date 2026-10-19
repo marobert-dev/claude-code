@@ -67,10 +67,3 @@ Output contract:
 - Return a one-line summary (story count, folder path) to whoever invoked you.
 
 All output must be Markdown only.
-
-<!--
-EXISTING ALTERNATIVES FOUND — for your review, not auto-applied:
-- product-owner.md ("Sarah") in https://github.com/valllabh/claude-agents — backlog refinement and story creation with acceptance criteria; that repo splits ordering into scrum-master.md rather than keeping it with the product owner.
-- "Product Management" plugin in your Claude.ai/Cowork catalog (not enabled) — feature-spec and roadmap writing.
-- design:user-research skill (already enabled in your Claude.ai/Cowork workspace) — deeper structured research if you want to lean on it instead of a from-scratch web search for the market-standards step.
--->

@@ -22,6 +22,10 @@ TASK="$(evalkit task-field "$META/run.json" task)"
 TASK_DIR="$KIT/tasks/$TASK"
 TASK_JSON="$TASK_DIR/task.json"
 EVAL="$RUN/.eval"
+if [ "$(evalkit task-field "$EVAL/metrics.json" is_error)" = "true" ]; then
+  rm -f "$EVAL/result.json"
+  die "the agent call failed (see $EVAL/agent-report.md); rerun run-agent.sh before checking"
+fi
 mkdir -p "$EVAL"
 rm -f "$EVAL/checks.jsonl" "$EVAL/checks.json" "$EVAL"/hidden-*.json
 export RUN_DIR="$RUN" EVAL_DIR="$EVAL" TASK_DIR TASK_ID="$TASK" CHECKS_FILE="$EVAL/checks.jsonl" META_DIR="$META"

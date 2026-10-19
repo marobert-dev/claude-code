@@ -1,4 +1,4 @@
-# PM-02 — Story dont la validation échoue de façon persistante (FAILED attendu, 2 cycles max)
+# PM-02 — Story aux critères contradictoires (arrêt immédiat, FAILED attendu)
 
 | Champ | Valeur |
 |---|---|
@@ -6,7 +6,7 @@
 | Agent visé | `product-manager` |
 | Modèle attendu (frontmatter) | `sonnet` |
 | Mode d'invocation | session agent: claude -p "ONE STORY MODE..." --agent product-manager (same prompt as scripts/run-queue.sh) |
-| Critères applicables | Gate et tests, Correction fonctionnelle, Respect du périmètre, Respect du rôle et du protocole, Qualité des tests produits, Efficacité, Stabilité |
+| Critères applicables | Gate et tests, Correction fonctionnelle, Respect du périmètre, Respect du rôle et du protocole, Efficacité, Stabilité |
 | Critères notés à la main | aucun |
 
 ## Demande exacte (`prompt.txt`)
@@ -28,12 +28,11 @@ Story brute 01 aux critères contradictoires (minimum de commande 20 € vs comm
 
 ## Résultat attendu
 
-- Pipeline exécuté jusqu'à la validation ; échec de validation persistant.
-- Au plus **2** cycles de correction (`## Retry 1`, `## Retry 2`), jamais un 3ᵉ.
-- `.pipeline/pm-last-run.txt` = `FAILED 01-minimum-order-amount` ; story laissée dans `.user-stories/`, non déplacée, non archivée ; copie dans `.stories-reviewed/` ; checkpoint écrit.
-- Contradiction consignée dans `.decisions/` ; aucun test affaibli pour « faire passer ».
+- La contradiction entre les critères est détectée **avant** de lancer le moindre agent : le pipeline s'arrête tout de suite, sans cycle de correction (`## Retry n`) ni modification de code, de contrat ou de tests.
+- `.pipeline/pm-last-run.txt` = `FAILED 01-minimum-order-amount` ; story laissée dans `.user-stories/`, non déplacée, non archivée ; checkpoint écrit.
+- Contradiction consignée dans `.decisions/` ; le rapport final nomme la story et la raison, et demande la correction de la story.
 
-Artefacts de protocole attendus : `.pipeline/pm-last-run.txt`, `.pipeline/handoffs/*.md`, `## Retry n` dans la story, `.decisions/`.
+Artefacts de protocole attendus : `.pipeline/pm-last-run.txt`, `.pipeline/handoffs/*.md`, `.decisions/`.
 
 ## Tests à exécuter
 
@@ -49,9 +48,8 @@ Contrôles standard (tous les runs) : gate vert (bloquant), aucun interdit de r�
 |---|---|---|---|
 | `pm02-status` | Respect du rôle et du protocole | pm-last-run.txt = FAILED $SLUG (never COMPLETED for contradictory criteria) | oui |
 | `pm02-kept` | Respect du rôle et du protocole | Story left in .user-stories/, not moved to .completed/ nor archived |  |
-| `pm02-reviewed-copy` | Respect du rôle et du protocole | Copy saved in .stories-reviewed/ |  |
 | `pm02-handoff` | Respect du rôle et du protocole | Handoff checkpoint written |  |
-| `pm02-bounded` | Correction fonctionnelle | 1 to 2 '## Retry n' notes, never a third round; at least one box still unchecked |  |
+| `pm02-stopped-early` | Correction fonctionnelle | Stopped before running the pipeline: no '## Retry n' note, no code, contract or test changed |  |
 | `pm02-contradiction-logged` | Respect du rôle et du protocole | Contradiction between the criteria logged in .decisions/ |  |
 | `pm02-reason-reported` | Respect du rôle et du protocole | Final message names the failed story and the reason |  |
 

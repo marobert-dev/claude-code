@@ -38,7 +38,8 @@ DEFAULT_TOOLS="Read Edit Write Glob Grep TodoWrite Agent WebSearch WebFetch mcp_
 Bash(dotnet:*) Bash(npm:*) Bash(npx:*) Bash(node:*) Bash(git:*) Bash(bash:*) Bash(ls:*) Bash(cat:*) \
 Bash(head:*) Bash(tail:*) Bash(find:*) Bash(grep:*) Bash(mkdir:*) Bash(cp:*) Bash(mv:*) Bash(rm:*) Bash(which:*) \
 Bash(command:*) Bash(test:*) Bash(wc:*) Bash(sort:*) Bash(diff:*) Bash(date:*) Bash(echo:*) Bash(curl:*) \
-Bash(gitleaks:*) Bash(semgrep:*) Bash(schemathesis:*) Bash(oasdiff:*) Bash(osv-scanner:*)"
+Bash(gitleaks:*) Bash(semgrep:*) Bash(schemathesis:*) Bash(oasdiff:*) Bash(osv-scanner:*) \
+Bash(cd:*) Bash(python:*) Bash(python3:*) Bash(sed:*)"
 read -r -a TOOLS <<< "${EVAL_ALLOWED_TOOLS:-$DEFAULT_TOOLS}"
 read -r -a EXTRA <<< "${EVAL_CLAUDE_FLAGS:-}"
 
@@ -48,8 +49,11 @@ AGENT_FILE="$HOME/.claude/agents/$AGENT.md"
 AGENT_FILE_SHA="$( [ -f "$AGENT_FILE" ] && sha256sum "$AGENT_FILE" | cut -c1-12 || echo missing)"
 [ -f "$RUN/.claude/agents/$AGENT.md" ] && die "$RUN/.claude/agents/$AGENT.md would shadow the global agent under test"
 
+# Personal hooks (e.g. one that rewrites `npx …` into `wrapper npx …`) break the --allowedTools matching and must not
+# shape the agent under test. User settings stay loaded: the agents under test live in ~/.claude/agents.
+# The template's own permissions.allow is ignored in an untrusted run folder; DEFAULT_TOOLS already covers it.
 CMD=(claude -p "$(cat "$PROMPT_FILE")" --agent "$AGENT" --output-format json --permission-mode acceptEdits
-     --no-session-persistence "${EXTRA[@]}" --allowedTools "${TOOLS[@]}")
+     --no-session-persistence --settings '{"disableAllHooks": true}' "${EXTRA[@]}" --allowedTools "${TOOLS[@]}")
 
 if [ "$DRY" = 1 ]; then
   printf 'cd %q\n' "$RUN"
@@ -73,4 +77,9 @@ cp "$META/claude-output.json" "$RUN/.eval/claude-output.json"
 cp "$META/claude-stderr.log" "$RUN/.eval/claude-stderr.log"
 
 info "agent exited with $EXIT; metrics in $RUN/.eval/metrics.json"
+if [ "$(evalkit task-field "$RUN/.eval/metrics.json" is_error)" = "true" ]; then
+  # e.g. "You've hit your session limit": the agent did nothing, so this run must not be checked or scored.
+  printf 'error: agent call failed: %s\n' "$(head -c 300 "$RUN/.eval/agent-report.md")" >&2
+  exit "$EX_AGENT_CALL_FAILED"
+fi
 [ "$EXIT" = 0 ] || exit "$EXIT"

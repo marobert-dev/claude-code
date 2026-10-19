@@ -4,7 +4,7 @@
 
 ```
 agents/    12 subagent definitions — installed into ~/.claude/agents/ (global, all projects)
-hooks/     gate.sh (deterministic lint/typecheck/build/test gate) + settings.snippet.json
+hooks/     gate.sh (deterministic lint/typecheck/build/test gate), pm-state.sh (product-manager bookkeeping) + settings.snippet.json
 scripts/   run-queue.sh, run-parallel.sh — pipeline runners
            enable-graphify.sh / enable-graphify.ps1 — optionally inject Graphify support
 mcp/       team-memory/ — optional shared-memory MCP server (source; see its own README)
@@ -25,7 +25,7 @@ bash install.sh                      # copies agents/*.md -> ~/.claude/agents/
 
 Restart Claude Code if `~/.claude/agents/` didn't already exist before this copy — a running session only picks up a brand-new agents directory after a restart.
 
-To also install the per-project helpers into a **workspace root** (the folder you run the agents from — this copies `hooks/gate.sh` and `scripts/run-queue.sh`/`run-parallel.sh` there), pass it as an argument:
+To also install the per-project helpers into a **workspace root** (the folder you run the agents from — this copies `hooks/gate.sh`, `hooks/pm-state.sh` and `scripts/run-queue.sh`/`run-parallel.sh` there), pass it as an argument:
 
 ```bash
 bash install.sh /path/to/your/app-repo
@@ -39,7 +39,7 @@ Or do it by hand:
 
 ```bash
 mkdir -p .claude/hooks scripts
-cp hooks/gate.sh .claude/hooks/gate.sh
+cp hooks/gate.sh hooks/pm-state.sh .claude/hooks/
 cp scripts/run-queue.sh scripts/run-parallel.sh scripts/
 ```
 
@@ -101,7 +101,7 @@ bash scripts/enable-graphify.sh --backup
 This:
 1. Backs up the current agents to `~/.claude/agents-graphify-backup-<timestamp>/`
 2. Injects a "Before anything else" block into each agent that checks for `graphify-out/`
-3. If Graphify exists, agents will read `GRAPH_REPORT.md` and can run `graphify query "<question>"` for dependency analysis
+3. If Graphify exists, product-owner, analyst and conventions-scout read `GRAPH_REPORT.md`; every agent can run `graphify query "<question>"` for dependency analysis
 4. If Graphify doesn't exist, agents silently skip this and proceed normally
 
 **To remove Graphify** (revert to the minimal agent definitions):
@@ -133,7 +133,7 @@ Whether `/handoff` and `/resume` behave the same when the session runs under `--
 
 ## 6. Set up Graphify (recommended, replaces the old hand-maintained architecture file)
 
-Every agent in this set checks for `graphify-out/` and reads `graphify-out/GRAPH_REPORT.md` for architecture context, and can run `graphify query "<question>"` for targeted impact analysis, if [Graphify](https://graphify.com/) is set up in your workspace. It's optional — agents skip this gracefully if it isn't there — but it's a real upgrade over a doc-writer-maintained file: deterministic AST parsing (no hallucination risk), auto-refreshes on every commit, and merges graphs across multiple repos natively.
+Every agent in this set checks for `graphify-out/` and can run `graphify query "<question>"` for targeted impact analysis; product-owner, analyst and conventions-scout also read `graphify-out/GRAPH_REPORT.md` for architecture context (the others are invoked many times per story, so they query on demand instead), if [Graphify](https://graphify.com/) is set up in your workspace. It's optional — agents skip this gracefully if it isn't there — but it's a real upgrade over a doc-writer-maintained file: deterministic AST parsing (no hallucination risk), auto-refreshes on every commit, and merges graphs across multiple repos natively.
 
 **⚠️ Before installing on any platform:** back up `~/.claude/settings.json` first. A reported bug has `graphify claude install --strict` overwrite that file entirely — no backup, existing MCP servers/hooks/plugins gone. Given the `~/.claude/agents/` setup here, don't use `--strict`, and keep a copy of `settings.json` regardless.
 
@@ -207,9 +207,10 @@ Every directory this pipeline creates and manages for itself is dot-prefixed (hi
 | `.pipeline/team-memory.db` | team-memory MCP server (source: `mcp/team-memory/`; installed at `~\.mcp\team-memory\`, registered globally) | Shared memory (handoffs, story facts, gotchas, review patterns, decisions, standing rules), task/lock tables, flaky-test registry, usage telemetry — optional | No — local coordination state |
 | `.pipeline/pm-last-run.txt` | product-manager | One-line status (`COMPLETED`/`FAILED`/`EMPTY`) read by the scripts | No — local coordination state |
 | `.claude/hooks/gate.sh` | you (copied from `hooks/`) | Deterministic lint/typecheck/build/unit-test gate | Yes |
+| `.claude/hooks/pm-state.sh` | you (copied from `hooks/`) | product-manager's deterministic bookkeeping: handoff pickup, queue order, `.stories-reviewed/` copy + checkbox count, move to `.completed/`, `pm-last-run.txt`, feature branch, staging without coordination files | Yes |
 | `contracts/openapi.yaml` | analyst (source of truth); nobody else edits it | API contract shared by backend, frontend, integrator | Yes — project deliverable |
 | `tests/e2e/<story-id>/` | story-validator | Automated acceptance tests (FR + EN) — the regression suite | Yes — project deliverable |
-| `graphify-out/` | Graphify (external tool, not one of these agents) | Deterministic code knowledge graph — `GRAPH_REPORT.md`, `graph.json`, `graph.html` — every agent reads it for impact analysis if present. See section 6 for setup. | Yes, per Graphify's own convention (except `cost.json`) |
+| `graphify-out/` | Graphify (external tool, not one of these agents) | Deterministic code knowledge graph — `GRAPH_REPORT.md`, `graph.json`, `graph.html` — every agent queries it for impact analysis if present. See section 6 for setup. | Yes, per Graphify's own convention (except `cost.json`) |
 | `docs/dev/` | doc-writer | Human developer documentation — English only, regardless of the app's own languages | Yes — project deliverable |
 | `docs/user-manual/en/`, `docs/user-manual/fr/` | doc-writer | Two independent, cross-linked, searchable HTML sites mirroring the app's own navigation, written for a total beginner (no jargon, step-by-step) — the app supports French and English, so this does too | Yes — project deliverable |
 
@@ -234,8 +235,73 @@ All 12 live in [`agents/`](agents/).
 
 Models: `opus` for product-owner and analyst (planning errors are the most expensive downstream); `haiku` for unit-tester; `sonnet` for everything else — doc-writer stays on sonnet because the beginner-level French/English manual needs natural wording.
 
-Each file ends with an HTML comment listing existing published alternatives found during research, for you to review — not applied automatically.
+Existing published alternatives found while designing each role are listed under [Alternatives considered](#alternatives-considered) — kept out of the prompts so agents don't pay for them on every call.
 
 ## TODO
 
 - **Deployment/publication agent — not yet built.** Nothing in this stack currently ships anything: no web deploy/CI-CD step, no App Store/Play Store submission (signing, provisioning profiles, store metadata/screenshots, review-cycle-aware versioning). Every story currently ends at "committed to a feature branch." Add this when ready.
+
+## Alternatives considered
+
+Existing published agents and skills found while designing each role — for reference only, not applied.
+
+### analyst
+
+- architect.md ("Winston") in https://github.com/valllabh/claude-agents — system design, API design, ADRs. A closer match than that repo's own "analyst" role, which is market research/brainstorming, not technical architecture.
+- backend-architect subagent, common across wshobson-style collections, e.g. https://github.com/algra/agents and https://github.com/Dewski88/agents — REST/DB/microservice-boundary design.
+- engineering:architecture and engineering:system-design skills — already enabled in your Claude.ai/Cowork workspace catalog, directly reusable for this role's reasoning.
+- design:user-research, design:design-critique, and design:accessibility-review skills (already enabled) — relevant now that UI/UX research and analysis sits with this role instead of product-owner.
+
+### code-reviewer
+
+- engineering:code-review skill (already enabled in your Claude.ai/Cowork workspace) — covers security/performance/correctness review; check whether it's importable into this Claude Code project's own plugin setup via /plugin, since this agent's review-and-loop mechanic (inline comments, re-review until resolved) isn't something a chat-invoked skill can do on its own.
+- code-reviewer / architect-reviewer subagents, common across wshobson-style collections (e.g. https://github.com/algra/agents, https://github.com/Dewski88/agents) — close in intent, though none implement the specific leave-comment/fix/re-review loop described here.
+
+### dev-backend
+
+- backend-architect subagent (see analyst.md's list) covers design, not hands-on implementation — a partial substitute at best.
+- developer.md ("James") in https://github.com/valllabh/claude-agents is a single unified full-stack developer; the frontend/backend split used here is a deliberate scope choice that repo doesn't make.
+- data:sql-queries and data:write-query skills (already enabled in your Claude.ai/Cowork workspace) — useful reference for the database-change portion of this role.
+- engineering:code-review skill (already enabled) — useful for a self-check pass on security/error-handling before handoff.
+
+### dev-frontend
+
+- frontend-developer subagent, common across wshobson-style collections (e.g. https://github.com/algra/agents, https://github.com/Dewski88/agents) — React components, responsive layouts, client-side state. Most of these collections split out a separate mobile-developer subagent rather than merging it into frontend-developer — worth a look if React Native ends up warranting its own agent later.
+- design:design-system skill (already enabled in your Claude.ai/Cowork workspace) — useful for component-consistency checks.
+- design:accessibility-review skill (already enabled) — a deeper WCAG audit pass, complementary to the accessibility baseline built into this agent (web side; mobile accessibility isn't WCAG-scoped).
+- frontend-design skill (available in your Claude Code/Claude.ai setup) — visual/aesthetic direction if reachable from within this agent's environment.
+
+### dev-integrator
+
+- No researched collection has a dedicated frontend↔backend integration role — genuine gap, this custom agent is justified.
+- design:design-handoff skill is adjacent (design→dev handoff spec) but solves a different handoff than this role; not a real substitute.
+- engineering:debug skill (already enabled in your Claude.ai/Cowork workspace) — useful structured approach when a contract mismatch isn't obvious at a glance.
+
+### doc-writer
+
+- engineering:documentation skill (already enabled in your Claude.ai/Cowork workspace) — covers README/runbook/API-doc writing, close to documentation set 1.
+- frontend-design skill (available in your Claude Code/Claude.ai setup) — relevant styling guidance for the set 2 HTML site if it's reachable from within this agent's environment.
+- The former set 3 (AI-only architecture map) is now handled by Graphify (https://graphify.com/, https://github.com/Graphify-Labs/graphify) instead of a hand-maintained file — deterministic AST-based extraction, auto-refreshed on every commit via `graphify hook install`, and native multi-repo merging, all of which a doc-writer-maintained file couldn't match.
+
+### product-manager
+
+- No researched collection combines live multi-agent pipeline orchestration with pause/resume in one agent — no close off-the-shelf substitute found for this specific role.
+- Partial overlap only: product-manager.md ("John", PRD/roadmap writing) and scrum-master.md ("Bob", story workflow) in https://github.com/valllabh/claude-agents — neither drives the actual dev pipeline.
+- 08-business-product/scrum-master.md in https://github.com/VoltAgent/awesome-claude-code-subagents — same gap.
+
+### product-owner
+
+- product-owner.md ("Sarah") in https://github.com/valllabh/claude-agents — backlog refinement and story creation with acceptance criteria; that repo splits ordering into scrum-master.md rather than keeping it with the product owner.
+- "Product Management" plugin in your Claude.ai/Cowork catalog (not enabled) — feature-spec and roadmap writing.
+- design:user-research skill (already enabled in your Claude.ai/Cowork workspace) — deeper structured research if you want to lean on it instead of a from-scratch web search for the market-standards step.
+
+### story-validator
+
+- qa-engineer.md ("Quinn") in https://github.com/valllabh/claude-agents — close, but that role also refactors and fixes code; this spec deliberately keeps story-validator validation-only (enforced here via the tool allowlist, not just the prompt).
+- engineering:code-review, engineering:deploy-checklist, engineering:testing-strategy skills (already enabled in your Claude.ai/Cowork workspace) — worth preloading via the `skills:` frontmatter field for a more rigorous checklist.
+- Note: re-testing every archived story on every new one will get slower as the backlog of validated stories grows — worth revisiting (e.g. sampling, or scoping regression checks to stories touching related files) if that becomes a real bottleneck.
+
+### unit-tester
+
+- engineering:testing-strategy skill — already enabled in your Claude.ai/Cowork workspace catalog, a direct match. Whether it imports as-is into this Claude Code project's own plugin/skill setup depends on your Claude Code plugin marketplace config — check with /plugin before assuming.
+- qa-engineer.md ("Quinn")'s test-strategy command in https://github.com/valllabh/claude-agents overlaps partially, but bundled with code review/refactoring that this spec keeps separate (see story-validator.md).
