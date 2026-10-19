@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 # Enable Graphify integration in all development agents
 # Usage: .\scripts\enable-graphify.ps1 [-Backup] [-Remove]
 
@@ -14,6 +14,20 @@ $GraphifyBlock = @"
 
 Before anything else, check whether ``graphify-out/`` exists in the workspace. If it does, read ``graphify-out/GRAPH_REPORT.md`` for a high-level architecture summary, and run ``graphify query "<question>"`` via Bash whenever you need to know what a file or symbol depends on, or is depended on by, before {{ACTION}}. If Graphify isn't set up for this project, skip this and proceed without it.
 "@
+
+# Only the planners and the scout read the full report; every other agent queries on demand,
+# since it may be invoked many times per story.
+$ReportReaders = @("analyst", "product-owner", "conventions-scout")
+$GraphifyQueryBlock = @"
+
+Before anything else, check whether ``graphify-out/`` exists in the workspace. If it does, run ``graphify query "<question>"`` via Bash whenever you need to know what a file or symbol depends on, or is depended on by, before {{ACTION}} — query only what you need; don't read ``graphify-out/GRAPH_REPORT.md`` in full. If Graphify isn't set up for this project, skip this and proceed without it.
+"@
+
+# Windows PowerShell 5.1 reads BOM-less UTF-8 as ANSI (mangling — and accents) and writes UTF8 with a BOM,
+# which lands before the agent's `---` frontmatter. Read as UTF-8 (a stray BOM is dropped), write without one.
+$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+function Read-Agent([string]$Path) { [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8) }
+function Write-Agent([string]$Path, [string]$Text) { [System.IO.File]::WriteAllText($Path, $Text, $Utf8NoBom) }
 
 $Actions = @{
     "product-manager" = "routing work"
@@ -35,9 +49,10 @@ if ($Remove) {
     foreach ($agent in $Actions.Keys) {
         $file = "$AgentsDir\$agent.md"
         if (Test-Path $file) {
-            $content = Get-Content $file -Raw
-            $updated = $content -replace '(?s)Before anything else, check whether `graphify-out/`.*?(?=^(?![ ])|$)', ''
-            Set-Content $file $updated -Encoding UTF8
+            $content = Read-Agent $file
+            # Same as the bash version: drop the one-line block and the blank line after it.
+            $updated = $content -replace '(?m)^Before anything else, check whether `graphify-out/`.*\r?\n(?:[ \t]*\r?\n)?', ''
+            Write-Agent $file $updated
             Write-Host "  ✓ Removed from $agent.md"
         }
     }
@@ -65,7 +80,7 @@ foreach ($agent in $Actions.Keys) {
         continue
     }
 
-    $content = Get-Content $file -Raw
+    $content = Read-Agent $file
 
     # Check if Graphify block already exists
     if ($content -match 'Before anything else, check whether `graphify-out/`') {
@@ -94,13 +109,14 @@ foreach ($agent in $Actions.Keys) {
 
     # Insert Graphify block after frontmatter
     $action = $Actions[$agent]
-    $graphifyText = $GraphifyBlock -replace '{{ACTION}}', $action
+    $block = if ($ReportReaders -contains $agent) { $GraphifyBlock } else { $GraphifyQueryBlock }
+    $graphifyText = $block -replace '{{ACTION}}', $action
 
     $before = $lines[0..$frontmatterEnd]
     $after = $lines[($frontmatterEnd + 1)..($lines.Count - 1)]
 
     $updated = @($before) + @($graphifyText) + @($after)
-    Set-Content $file ($updated -join "`n") -Encoding UTF8
+    Write-Agent $file ($updated -join "`n")
 
     Write-Host "  ✓ Injected into $agent.md"
 }

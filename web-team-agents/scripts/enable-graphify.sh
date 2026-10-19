@@ -8,10 +8,15 @@ BACKUP=${1:---backup}
 AGENTS_DIR="${HOME}/.claude/agents"
 BACKUP_DIR="${AGENTS_DIR}-graphify-backup-$(date +%s)"
 
-# Graphify block to inject (template)
+# Graphify blocks to inject (templates). Only the planners and the scout read the full report;
+# every other agent queries on demand, since it may be invoked many times per story.
+READS_REPORT=" analyst product-owner conventions-scout "
 read -r -d '' GRAPHIFY_BLOCK << 'EOF' || true
 
 Before anything else, check whether `graphify-out/` exists in the workspace. If it does, read `graphify-out/GRAPH_REPORT.md` for a high-level architecture summary, and run `graphify query "<question>"` via Bash whenever you need to know what a file or symbol depends on, or is depended on by, before {{ACTION}}. If Graphify isn't set up for this project, skip this and proceed without it.
+EOF
+read -r -d '' GRAPHIFY_QUERY_BLOCK << 'EOF' || true
+Before anything else, check whether `graphify-out/` exists in the workspace. If it does, run `graphify query "<question>"` via Bash whenever you need to know what a file or symbol depends on, or is depended on by, before {{ACTION}} — query only what you need; don't read `graphify-out/GRAPH_REPORT.md` in full. If Graphify isn't set up for this project, skip this and proceed without it.
 EOF
 
 # Agent-specific actions
@@ -70,7 +75,9 @@ for agent in "${!ACTIONS[@]}"; do
   fi
 
   action="${ACTIONS[$agent]}"
-  graphify_text=$(echo "$GRAPHIFY_BLOCK" | sed "s|{{ACTION}}|$action|")
+  block="$GRAPHIFY_QUERY_BLOCK"
+  [[ "$READS_REPORT" == *" $agent "* ]] && block="$GRAPHIFY_BLOCK"
+  graphify_text=$(echo "$block" | sed "s|{{ACTION}}|$action|")
 
   # Insert block after frontmatter (after ---)
   # Find line number of second ---
