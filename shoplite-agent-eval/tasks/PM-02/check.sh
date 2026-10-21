@@ -25,8 +25,8 @@ sys.exit(0 if not retries and not code else 1)
 PY
 }
 check pm02-stopped-early functional "Stopped before running the pipeline: no '## Retry n' note, no code, contract or test changed" -- stopped_before_pipeline
-check pm02-contradiction-logged protocol "Contradiction between the criteria logged in .decisions/" -- \
-  bash -c "grep -rEiq 'contradict|conflict|incompatible|mutually exclusive|cannot both|both cannot|cannot be both' .decisions/ 2>/dev/null"
+check pm02-contradiction-logged protocol "Contradiction between the criteria logged (team memory or .decisions/)" -- \
+  decision_logged product-manager 'contradict|conflict|incompatible|mutually exclusive|cannot both|both cannot|cannot be both'
 check pm02-reason-reported protocol "Final message names the failed story and the reason" -- report_mentions "$SLUG|minimum"
 
 finish

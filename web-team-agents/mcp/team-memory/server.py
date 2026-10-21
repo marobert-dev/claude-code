@@ -77,6 +77,13 @@ def export_decisions_markdown(story: str = "", agent: str = "") -> dict:
 
 
 @mcp.tool()
+def export_decisions_files(story: str) -> dict:
+    """Append one story's logged decisions to .decisions/<agent>.decisions.md in the workspace (this server's
+    working directory), one file per agent; entries already in a file are skipped. Returns only the counts."""
+    return store.export_decisions_files(story, os.getcwd())
+
+
+@mcp.tool()
 def decisions_digest(min_count: int = 2) -> dict:
     """Recurring decision topics (seen at least min_count times) with the latest example — feed for sharper stories and conventions."""
     return store.decisions_digest(min_count)
@@ -89,6 +96,12 @@ def story_context(story: str, per_section: int = 6, agent: str = "", max_chars: 
 
 
 # ------------------------------------------------------------------ token savers
+@mcp.tool()
+def agent_briefing(story: str, role: str, agent: str = "", max_chars: int = 12000) -> dict:
+    """Start-of-story briefing for one agent in a single call: story_context (handoff, standing rules, knowledge incl. review patterns, this story's decisions, open tasks for this role, locks) plus the .pipeline/conventions.md sections for the role. Use it instead of story_context + recall(kind="review-pattern") + conventions(role)."""
+    return store.agent_briefing(story, role, agent, max_chars)
+
+
 @mcp.tool()
 def contract_lookup(query: str = "", file: str = "", max_chars: int = 14000, agent: str = "", story: str = "", include_common: bool = False) -> dict:
     """Read only the part of the OpenAPI contract you need (the file is ~40k tokens; a lookup is ~1-3k). query: '' = outline of every

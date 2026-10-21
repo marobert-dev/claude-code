@@ -128,7 +128,7 @@ check_blocking an01-no-code protocol "Only TODO: comments in source files (no im
 
 todo_format () {
   local bad
-  bad="$(git -C "$RUN_DIR" diff -U0 eval-start -- backend/src frontend/src | grep -E '^\+.*TODO' | grep -vE 'TODO: ([^ ]+ ?){1,5}( \*/| \*\/\})?\s*$')"
+  bad="$(git -C "$RUN_DIR" diff -U0 eval-start -- backend/src frontend/src | grep -E '^\+.*TODO' | grep -vE 'TODO: ([^ ]+ ?){1,5}( \*/| \*\/\}| -->)?\s*$')"
   [ -z "$bad" ] || { echo "$bad" | head -n 3; return 1; }
 }
 check an01-todo-format protocol "Every TODO is 'TODO: <= 5 words'" -- todo_format

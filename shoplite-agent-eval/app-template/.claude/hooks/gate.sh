@@ -6,7 +6,11 @@
 #   2. Called by product-manager before every code-reviewer round:  bash .claude/hooks/gate.sh
 #      Any non-zero exit = failure; stderr holds a short report to hand back to the dev agent.
 # Override everything with a project script: .claude/gate.local.sh (run instead of auto-detection).
-# Env: GATE_SKIP_BUILD=1 to skip builds, GATE_SKIP_TESTS=1 to skip tests, GATE_MAX_BLOCKS (default 3).
+# A pass is remembered in .pipeline/gate-pass by a fingerprint of the code (every covered git repo:
+# HEAD, uncommitted diff, untracked files); the next call on unchanged code passes without re-running,
+# since a dev agent, the SubagentStop hook and product-manager otherwise gate the same tree back to back.
+# Env: GATE_SKIP_BUILD=1 to skip builds, GATE_SKIP_TESTS=1 to skip tests, GATE_MAX_BLOCKS (default 3),
+#      GATE_NO_CACHE=1 to always re-run.
 
 set -u
 ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
@@ -40,6 +44,48 @@ if [ -n "$AGENT_ID" ]; then
   fi
 fi
 
+# --- discover project dirs: root + immediate subdirs --------------------------------------
+DIRS=". $(find . -mindepth 1 -maxdepth 1 -type d ! -name '.*' ! -name node_modules ! -name docs -printf '%f ' 2>/dev/null)"
+
+# --- pass cache ---------------------------------------------------------------------------
+CACHE=".pipeline/gate-pass"
+# Coordination state changes between calls without changing the code (README "Files produced").
+UNGATED=(':(exclude).pipeline' ':(exclude).user-stories' ':(exclude).stories-reviewed' ':(exclude).validated-stories'
+         ':(exclude).completed' ':(exclude).decisions' ':(exclude).claude/run.log' ':(exclude)docs')
+
+fingerprint () {  # prints nothing when no covered dir is in a git repo: no cache then
+  local tops top f
+  tops="$(for d in $DIRS; do git -C "$d" rev-parse --show-toplevel 2>/dev/null; done | sort -u)"
+  [ -n "$tops" ] || return 0
+  {
+    echo "skip-build=${GATE_SKIP_BUILD:-} skip-tests=${GATE_SKIP_TESTS:-}"
+    [ -f .claude/gate.local.sh ] && git hash-object .claude/gate.local.sh
+    printf '%s\n' "$tops" | while IFS= read -r top; do
+      echo "repo $top $(git -C "$top" rev-parse HEAD 2>/dev/null)"
+      git -C "$top" diff HEAD --binary -- . "${UNGATED[@]}" 2>/dev/null
+      git -C "$top" ls-files --others --exclude-standard -- . "${UNGATED[@]}" 2>/dev/null | while IFS= read -r f; do
+        echo "untracked $f $(git -C "$top" hash-object -- "$f" 2>/dev/null)"
+      done
+    done
+  } | git hash-object --stdin
+}
+
+FINGERPRINT=""
+[ -z "${GATE_NO_CACHE:-}" ] && FINGERPRINT="$(fingerprint)"
+if [ -n "$FINGERPRINT" ] && [ "$(cat "$CACHE" 2>/dev/null)" = "$FINGERPRINT" ]; then
+  [ -n "$COUNTER" ] && rm -f "$COUNTER"
+  echo "gate: OK (unchanged since the last pass)"
+  exit 0
+fi
+
+pass () {
+  [ -n "$COUNTER" ] && rm -f "$COUNTER"
+  # Only the workspace root has .pipeline/; a gate run from a subfolder must not leave a stray cache there.
+  [ -n "$FINGERPRINT" ] && [ -d .pipeline ] && echo "$FINGERPRINT" > "$CACHE"
+  echo "gate: OK"
+  exit 0
+}
+
 # --- project override ---------------------------------------------------------------------
 if [ -f .claude/gate.local.sh ]; then
   OUT="$(bash .claude/gate.local.sh 2>&1)"; RC=$?
@@ -48,7 +94,7 @@ if [ -f .claude/gate.local.sh ]; then
     printf 'GATE FAILED (.claude/gate.local.sh):\n%s\n' "$(printf '%s' "$OUT" | tail -n 40)" >&2
     exit 2
   fi
-  exit 0
+  pass
 fi
 
 FAIL=""
@@ -63,8 +109,6 @@ $(printf '%s' "$out" | tail -n 40)
   fi
 }
 
-# --- discover project dirs: root + immediate subdirs --------------------------------------
-DIRS=". $(find . -mindepth 1 -maxdepth 1 -type d ! -name '.*' ! -name node_modules ! -name docs -printf '%f ' 2>/dev/null)"
 for d in $DIRS; do
   # Node / React / React Native
   if [ -f "$d/package.json" ] && command -v npm >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
@@ -75,8 +119,8 @@ for d in $DIRS; do
     [ -z "${GATE_SKIP_BUILD:-}" ] && has build && run_step "npm build" "$d" npm run --silent build
     [ -z "${GATE_SKIP_TESTS:-}" ] && has test  && run_step "npm test"  "$d" env CI=true npm test --silent
   fi
-  # .NET
-  if command -v dotnet >/dev/null 2>&1 && ls "$d"/*.sln "$d"/*.csproj >/dev/null 2>&1; then
+  # .NET (a folder may hold a .sln without any .csproj, or the reverse)
+  if command -v dotnet >/dev/null 2>&1 && { compgen -G "$d/*.sln" || compgen -G "$d/*.csproj"; } >/dev/null; then
     run_step "dotnet build" "$d" dotnet build --nologo -v q
     [ -z "${GATE_SKIP_TESTS:-}" ] && run_step "dotnet test" "$d" dotnet test --nologo --no-build -v q
   fi
@@ -87,6 +131,4 @@ if [ -n "$FAIL" ]; then
   printf 'GATE FAILED — fix these before finishing:\n%s' "$FAIL" >&2
   exit 2
 fi
-[ -n "$COUNTER" ] && rm -f "$COUNTER"
-echo "gate: OK"
-exit 0
+pass

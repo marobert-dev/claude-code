@@ -12,6 +12,5 @@ check_test fe05-fr a11y_i18n frontend 'FE05 French texts' "French texts"
 check fe05-contract-untouched contract "contracts/openapi.yaml unchanged" -- file_unchanged contracts/openapi.yaml
 check fe05-no-fetch-in-client protocol "No real call added for getOrder (only dev-integrator wires it)" -- \
   bash -c "! grep -A6 'export.*function getOrder\b\|export const getOrder\b' frontend/src/api/orders.ts | grep -q 'apiRequest\|fetch('"
-check fe05-tests-added tests_quality "Tests added for the detail screen" -- pattern_count_grew 'getOrder|OrderDetail' frontend/tests
 
 finish

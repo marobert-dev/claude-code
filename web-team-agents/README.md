@@ -4,10 +4,11 @@
 
 ```
 agents/    12 subagent definitions — installed into ~/.claude/agents/ (global, all projects)
-hooks/     gate.sh (deterministic lint/typecheck/build/test gate), pm-state.sh (product-manager bookkeeping) + settings.snippet.json
+hooks/     gate.sh (deterministic lint/typecheck/build/test gate), pm-state.sh (product-manager bookkeeping), detect-conventions.sh (facts for conventions-scout) + settings.snippet.json
 scripts/   run-queue.sh, run-parallel.sh — pipeline runners
            enable-graphify.sh / enable-graphify.ps1 — optionally inject Graphify support
 mcp/       team-memory/ — optional shared-memory MCP server (source; see its own README)
+templates/ user-manual/ — static site skeleton doc-writer fills in (page skeleton, navigation and search built from one page list)
 install.sh / install.ps1   installer — run one, see below
 ```
 
@@ -25,7 +26,7 @@ bash install.sh                      # copies agents/*.md -> ~/.claude/agents/
 
 Restart Claude Code if `~/.claude/agents/` didn't already exist before this copy — a running session only picks up a brand-new agents directory after a restart.
 
-To also install the per-project helpers into a **workspace root** (the folder you run the agents from — this copies `hooks/gate.sh`, `hooks/pm-state.sh` and `scripts/run-queue.sh`/`run-parallel.sh` there), pass it as an argument:
+To also install the per-project helpers into a **workspace root** (the folder you run the agents from — this copies `hooks/gate.sh`, `hooks/pm-state.sh`, `hooks/detect-conventions.sh`, `scripts/run-queue.sh`/`run-parallel.sh` and `templates/user-manual/` there), pass it as an argument:
 
 ```bash
 bash install.sh /path/to/your/app-repo
@@ -38,14 +39,15 @@ bash install.sh /path/to/your/app-repo
 Or do it by hand:
 
 ```bash
-mkdir -p .claude/hooks scripts
-cp hooks/gate.sh hooks/pm-state.sh .claude/hooks/
+mkdir -p .claude/hooks .claude/templates scripts
+cp hooks/gate.sh hooks/pm-state.sh hooks/detect-conventions.sh .claude/hooks/
 cp scripts/run-queue.sh scripts/run-parallel.sh scripts/
+cp -R templates/user-manual .claude/templates/
 ```
 
 Optional but recommended — run the gate inside the dev agents too, so they fix failures before finishing. Back up `.claude/settings.json` first, then merge `hooks/settings.snippet.json` into it. The gate is also run by product-manager before every code review, so the pipeline stays safe even if the hook never fires (SubagentStop matcher/exit-code behavior is only partly documented — verify with a small run).
 
-Scripts and `gate.sh` are bash: on Windows run them from Git Bash or WSL. Override the gate for a project with `.claude/gate.local.sh`.
+Scripts and `gate.sh` are bash: on Windows run them from Git Bash or WSL. Override the gate for a project with `.claude/gate.local.sh`. The gate remembers its last pass in `.pipeline/gate-pass` (a fingerprint of HEAD, the uncommitted diff and untracked files of every covered git repo, ignoring coordination folders and `docs/`), so back-to-back calls on unchanged code — dev agent, SubagentStop hook, product-manager — run the checks once; `GATE_NO_CACHE=1` forces a full run. Git-ignored files (e.g. a local `.env`) are not part of the fingerprint.
 
 **For another agent installing this on your behalf:** clone the repo, run `bash install.sh [workspace-dir]` (or `install.ps1` on native Windows PowerShell), then read section 2 onward below to queue and run the pipeline — no other setup is required except the optional tools in section 7.
 
@@ -66,23 +68,23 @@ claude --agent product-manager
 ```
 
 - If `.user-stories/` is missing or empty, product-manager errors out immediately: no stories to process.
-- On the first run it calls **conventions-scout** once to write `.pipeline/conventions.md` (stack, layering, i18n, test setup, exact lint/typecheck/build/test commands). Every other agent reads that file instead of re-detecting conventions.
+- On the first run it calls **conventions-scout** once to write `.pipeline/conventions.md` (stack, layering, i18n, test setup, exact lint/typecheck/build/test commands). It starts from `.claude/hooks/detect-conventions.sh`, which settles the mechanical facts (repos, frameworks from dependencies, the gate's exact commands, test/locale/contract locations, security tools), and reads source code only for what needs judgment. Every other agent reads that file instead of re-detecting conventions; product-manager re-runs the scout in refresh mode every 6 stories.
 - Otherwise it works through the queued files in filename order, one at a time:
-  1. **analyst** appends a technical plan (incl. UI/UX for user-facing stories) directly into the story file. For any API change it also writes/updates `contracts/openapi.yaml` — the single contract dev-backend, dev-frontend and dev-integrator all build against.
-  2. **dev-frontend** and/or **dev-backend** implement it (in parallel when both apply). After each, a deterministic **gate** (`.claude/hooks/gate.sh`: lint, typecheck, build, unit tests — no LLM) must pass before **code-reviewer** runs. They loop with code-reviewer until clean, then **unit-tester** adds coverage. product-manager logs condensed (≤15 lines) reports into the story file. Unresolved broken code stops the run.
-  3. **dev-integrator** wires frontend to backend, verified by a contract check (Schemathesis against `contracts/openapi.yaml` when installed), then gate + code-reviewer loop. A blocked integration stops the run.
-  4. **security-reviewer** reviews every changed file (secret/SAST/dependency scans if installed, authZ, validation, mobile risks). Findings loop back to the owning dev agent; critical/high must be fixed.
+  1. **analyst** appends a technical plan (incl. UI/UX for user-facing stories) directly into the story file, in a fixed layout — a `Scope:` line, then `### Shared`, `### Backend`, `### Web`, `### Mobile` and `### Existing code to change` — so each dev agent reads only its own part. For any API change it also writes/updates `contracts/openapi.yaml` — the single contract dev-backend, dev-frontend and dev-integrator all build against.
+  2. **dev-frontend** and/or **dev-backend** implement it (in parallel when both apply). After each, a deterministic **gate** (`.claude/hooks/gate.sh`: lint, typecheck, build, unit tests — no LLM) must pass before **code-reviewer** runs. They loop with code-reviewer until clean (at most 3 review rounds, then the run stops), then **unit-tester** adds coverage. The frontend and backend loops run side by side. An existing unit test that asserts behavior the story changes on purpose is parked by the dev agent (framework skip + `OBSOLETE-TEST: <story-id> — <what changed>` marker), and unit-tester rewrites or removes it; no marker may remain before validation. product-manager logs condensed (≤15 lines) reports into the story file. Unresolved broken code stops the run.
+  3. **dev-integrator** compares frontend, backend and contract by hand for the plan's operations, wires them, then runs the contract check once (the project's own contract tests, or Schemathesis against `contracts/openapi.yaml` restricted to those operations when installed), then gate + code-reviewer loop. A blocked integration stops the run.
+  4. **security-reviewer** reviews every changed file (secret/SAST/dependency scans if installed, authZ, validation, mobile risks). Findings loop back to the owning dev agent for at most 3 rounds; critical/high must be fixed, medium/low may stay as `## Security Notes` and a logged decision.
   5. **story-validator** turns each acceptance criterion into an automated e2e test (French and English) under `tests/e2e/<story-id>/`, checks the boxes that pass, then runs the **whole e2e suite** as the regression check. Only `(manual)` criteria of overlapping older stories are re-checked by hand.
   6. product-manager saves the returned file to `.stories-reviewed/<same-filename>` regardless of outcome.
-  7. If a box is unchecked or a regression was found, product-manager runs up to **2 bounded fix rounds** (owning agent → gate → reviewers → story-validator again). If it still fails, the story **stays** in `.user-stories/`, the run stops, and product-manager writes a handoff checkpoint.
+  7. If a box is unchecked or a regression was found, product-manager runs up to **2 bounded fix rounds** (owning agent → gate → reviewers → story-validator again). A retry re-runs the failed tests first and the whole suite only once they pass. If it still fails, the story **stays** in `.user-stories/`, the run stops, and product-manager writes a handoff checkpoint.
   8. If everything passes, story-validator archives the story into `.validated-stories/`, **doc-writer** runs, and the story file is **moved** from `.user-stories/` to `.completed/` — that queue only ever holds unfinished work.
-- Every agent runs autonomously (no per-step approval) and logs any genuine judgment call — an ambiguous criterion, a contradiction, a gap, a question — to `.decisions/<agent-name>.decisions.md` rather than stopping to ask.
+- Every agent runs autonomously (no per-step approval) and logs any genuine judgment call — an ambiguous criterion, a contradiction, a gap, a question — rather than stopping to ask: with `log_decision` when team memory is available (one call, grouped by topic, recurring topics become standing rules), otherwise to `.decisions/<agent-name>.decisions.md`. After each story (completed or failed) product-manager calls `export_decisions_files(story)`, so `.decisions/` always holds that story's entries as files too.
 - product-manager writes a handoff checkpoint every 3 completed stories and once more when the queue is empty, refreshing `.pipeline/decisions-digest.md` each time. product-owner reads that digest, so recurring ambiguities get fixed at the source (sharper criteria) instead of being guessed again and again.
-- With git management enabled, commits include this story's application changes — but never `.user-stories/`, `.stories-reviewed/`, `.validated-stories/`, `.completed/`, `.decisions/`, or `.pipeline/pm-progress.md`, which are local coordination state (also `.pipeline/pm-last-run.txt`, `.pipeline/decisions-digest.md` and `.pipeline/team-memory.db*`). Add those specific paths to `.gitignore` if you haven't already; the rest of `.claude/` (like `.claude/agents/`) should stay committed for the team. If the project uses Graphify, its `graphify-out/` folder is managed by Graphify's own git hook, independent of this pipeline's commits.
+- With git management enabled, commits include this story's application changes — but never `.user-stories/`, `.stories-reviewed/`, `.validated-stories/`, `.completed/`, `.decisions/`, or `.pipeline/pm-progress.md`, which are local coordination state (also `.pipeline/pm-last-run.txt`, `.pipeline/decisions-digest.md`, `.pipeline/gate-pass` and `.pipeline/team-memory.db*`). Add those specific paths to `.gitignore` if you haven't already; the rest of `.claude/` (like `.claude/agents/`) should stay committed for the team. If the project uses Graphify, its `graphify-out/` folder is managed by Graphify's own git hook, independent of this pipeline's commits.
 
 Don't set `product-manager` as a project-wide default agent in `.claude/settings.json` — that would force every session in that repo into pipeline mode, including plain ad-hoc coding sessions. Use `--agent` per run instead.
 
-**Why launch with `product-manager`, not `product-owner`, to process the queue:** only the agent running as the actual Claude Code session has native access to your `/handoff` and `/resume` commands, and product-manager is the one that needs them (it pauses mid-pipeline on failure or every 5 stories). product-owner doesn't need this — it's a short, one-shot run, which is also why it's fine for it to be a fully separate invocation now.
+**Why launch with `product-manager`, not `product-owner`, to process the queue:** only the agent running as the actual Claude Code session has native access to your `/handoff` and `/resume` commands, and product-manager is the one that needs them (it pauses mid-pipeline on failure, and checkpoints every 3 stories). product-owner doesn't need this — it's a short, one-shot run, which is also why it's fine for it to be a fully separate invocation now.
 
 ## 3a. Graphify integration (optional, enables auto-update)
 
@@ -119,9 +121,20 @@ Agents are designed to work perfectly with or without Graphify — the integrati
 - **One fresh session per story** (context never accumulates): `bash scripts/run-queue.sh` from the workspace root. It runs `claude -p ... --agent product-manager` in ONE STORY MODE, reads `.pipeline/pm-last-run.txt` (`COMPLETED`, `FAILED`, or `EMPTY`), and stops on the first failure. Set `CLAUDE_FLAGS` (default `--permission-mode acceptEdits`) and pre-approve the tools your setup needs in `.claude/settings.json` — a headless run cannot answer permission prompts.
 - **Independent stories in parallel**: `bash scripts/run-parallel.sh 2` (add `--dry-run` to only list what is ready). product-owner writes a `## Dependencies` section in every story; a story is ready when everything it lists is already in `.completed/`. Each ready story runs in its own git worktree on `feature/<slug>`. You merge the branches into `dev` yourself, then run `run-queue.sh` so regression checks run on the merged result. Single-repo workspaces only.
 
-### 3c. Team memory (phase 1, optional)
+### 3c. Team memory (optional)
 
-Source lives in this repo, at `mcp/team-memory/` (see its `README.md`); the installed copy Claude Code actually runs is a separate copy at `~\.mcp\team-memory\`, registered globally (`--scope user`) so every project on this machine can use it — **re-copy `server.py`/`store.py` there after every source change, or the running server silently keeps the old behavior** (this bit us once: it kept defaulting to `.claude/team-memory.db` for days after the source was fixed to `.pipeline/team-memory.db`). Merge `hooks/settings.snippet.json` into each project's `.claude/settings.json` (it now also allows `mcp__team-memory`), and add `.pipeline/team-memory.db*` to that project's `.gitignore`. **Phase 1:** product-manager adds a short "Team memory briefing" to each agent prompt and writes a handoff entry at every checkpoint and a fact when a story completes. **Phase 2:** analyst, dev-frontend, dev-backend, dev-integrator, code-reviewer, security-reviewer, story-validator and unit-tester also have the tools (`tools:` line) and each has a "Team memory" section — `story_context`/`recall` before working, locks on shared files, at most 3 `remember` calls at the end, `log_decision` for judgment calls, and reviewers save recurring `review-pattern` rules that devs recall before coding. Every agent ends its report with `Memory: available|unavailable`, so the first story doubles as the smoke test that subagents can reach the server (product-manager records the result in `.pipeline/pm-progress.md`). If the server is missing, every agent skips its memory steps silently and the pipeline runs exactly as before. **Phase 3 (applied 2026-09-24, validated on 5 stories — review rounds dropped from ~1-2/story to 4/5 clean first-round; task board mirror redone 2026-09-30, see incident note below):** product-manager mirrors the pipeline's steps onto the task board with one `task_checkpoint(story, role, status)` call per stage (no separate `task_post`/`task_claim`/`task_finish`) for crash-recovery visibility; product-owner reads `recall(kind="fact")` and `decisions_digest()` before writing new stories to avoid re-queuing built capabilities; doc-writer optionally reads `recall(kind="fact", story=...)`; the server gained `export_decisions_markdown(story, agent)` so `.decisions/*.decisions.md` can eventually be regenerated from `log_decision` entries instead of hand-written in parallel (not yet switched over — both still run side by side). Details: `TEAM-MEMORY-PROPOSAL.md`.
+Source lives in this repo, at `mcp/team-memory/` (see its `README.md`); the installed copy Claude Code actually runs is a separate copy at `~\.mcp\team-memory\`, registered globally (`--scope user`) so every project on this machine can use it — **re-copy `server.py`/`store.py` there after every source change, or the running server silently keeps the old behavior** (this bit us once: it kept defaulting to `.claude/team-memory.db` for days after the source was fixed to `.pipeline/team-memory.db`). Merge `hooks/settings.snippet.json` into each project's `.claude/settings.json` (it now also allows `mcp__team-memory`), and add `.pipeline/team-memory.db*` to that project's `.gitignore`. **Phase 1:** product-manager adds a short "Team memory briefing" to each agent prompt and writes a handoff entry at every checkpoint and a fact when a story completes. **Phase 2:** analyst, dev-frontend, dev-backend, dev-integrator, code-reviewer, security-reviewer, story-validator and unit-tester also have the tools (`tools:` line) and each has a "Team memory" section — `story_context`/`recall` before working, locks on shared files, at most 3 `remember` calls at the end, `log_decision` for judgment calls, and reviewers save recurring `review-pattern` rules that devs recall before coding. Every agent ends its report with `Memory: available|unavailable`, so the first story doubles as the smoke test that subagents can reach the server (product-manager records the result in `.pipeline/pm-progress.md`). If the server is missing, every agent skips its memory steps silently and the pipeline runs exactly as before. **Phase 3 (applied 2026-09-24, validated on 5 stories — review rounds dropped from ~1-2/story to 4/5 clean first-round; task board mirror redone 2026-09-30, see incident note below):** product-manager mirrors the pipeline's steps onto the task board with one `task_checkpoint(story, role, status)` call per stage (no separate `task_post`/`task_claim`/`task_finish`) for crash-recovery visibility; product-owner reads `recall(kind="fact")` and `decisions_digest()` before writing new stories to avoid re-queuing built capabilities; doc-writer optionally reads `recall(kind="fact", story=...)`; the server gained `export_decisions_markdown(story, agent)` so `.decisions/*.decisions.md` can eventually be regenerated from `log_decision` entries instead of hand-written in parallel. **Phase 4 (2026-10-20, token cut):** product-manager no longer composes a briefing; every agent starts with one `agent_briefing(story, role)` call (story context + its role's conventions sections) instead of `story_context` + `recall(kind="review-pattern")` + `conventions(role)`, and judgment calls go to `log_decision` only — agents write `.decisions/` files themselves only when memory is off or failing; product-manager exports each story's entries to those files with `export_decisions_files(story)` before closing it. Details: `TEAM-MEMORY-PROPOSAL.md`.
+
+### 3d. Token budget
+
+The prompts are written to keep each agent's context small; keep these rules when editing them:
+
+- **One briefing call.** With team memory on, each agent starts with a single `agent_briefing(story, role)` (story context, standing rules, review patterns, its role's conventions sections); product-manager never pastes context into their prompts — it passes file paths.
+- **Read only your part.** Dev agents read their plan subsections, reviewers start from `git diff` and re-review only what changed plus the code around open comments, security scans run on the changed files only.
+- **Bounded loops and capped reports.** At most 3 review rounds, 2 validation retries, targeted test re-runs; reports have a line cap (analyst 5, unit-tester 10, dev agents 15, reviewers one line per open comment).
+- **Deterministic work in scripts.** `gate.sh` (with its pass cache), `pm-state.sh`, `detect-conventions.sh` and the user-manual template do what needs no judgment, so no model spends tokens on it.
+
+Effects are measured with the eval kit in `../shoplite-agent-eval/` (cost, turns and score per task); compare campaigns there before and after a prompt change.
 
 ## 4. Note on claude.ai / Cowork access
 
@@ -188,7 +201,7 @@ No MCP server is required. Everything below is optional except where marked; eve
 | Dependency vulnerabilities | `npm audit` and `dotnet list package --vulnerable` (built in), or osv-scanner | — |
 | Code graph | Graphify (section 6) | see section 6 |
 
-Optional MCP servers: Playwright MCP (`claude mcp add playwright -- npx -y @playwright/mcp@latest`) if you want agents to explore the running app interactively — the pipeline itself only needs the Playwright test runner. A shared team-memory MCP server is a separate, later addition.
+Optional MCP servers: Playwright MCP (`claude mcp add playwright -- npx -y @playwright/mcp@latest`) if you want agents to explore the running app interactively — the pipeline itself only needs the Playwright test runner. The optional team-memory MCP server is described in section 3c.
 
 ## Files produced in the app repo
 
@@ -201,13 +214,15 @@ Every directory this pipeline creates and manages for itself is dot-prefixed (hi
 | `.stories-reviewed/<same-filename>` | product-manager | Permanent copy of every story file as returned by story-validator, pass or fail — the queue file itself gets moved, not deleted, once finished, but this copy stays put | No — local coordination state |
 | `.validated-stories/<same-filename>` | story-validator | Copy of every story that has fully passed — the regression-testing baseline for every story validated afterward | No — local coordination state |
 | `.completed/<same-filename>` | product-manager | Final resting place of every fully finished story file, moved here from `.user-stories/` instead of being deleted | No — local coordination state |
-| `.decisions/<agent-name>.decisions.md` | every agent | One file per agent, logging every autonomous judgment call it made (ambiguity, contradiction, gap, question) and why | No — local coordination state |
+| `.decisions/<agent-name>.decisions.md` | every agent when team memory is off or failing; otherwise product-manager after each story (`export_decisions_files`) | One file per agent, logging every autonomous judgment call it made (ambiguity, contradiction, gap, question) and why; with memory on, the same entries live in `.pipeline/team-memory.db` | No — local coordination state |
 | `.pipeline/conventions.md` | conventions-scout (bootstrap/refresh) | Stack, layering, i18n, test setup, exact lint/typecheck/build/test/e2e commands — read by every agent | Yes — shared knowledge |
-| `.pipeline/decisions-digest.md` | product-manager | Recurring ambiguities and "needs human answer" items distilled from `.decisions/`; read by product-owner | No — local coordination state |
+| `.pipeline/decisions-digest.md` | product-manager | Recurring ambiguities and "needs human answer" items distilled from the logged decisions (team memory and `.decisions/`); read by product-owner | No — local coordination state |
 | `.pipeline/team-memory.db` | team-memory MCP server (source: `mcp/team-memory/`; installed at `~\.mcp\team-memory\`, registered globally) | Shared memory (handoffs, story facts, gotchas, review patterns, decisions, standing rules), task/lock tables, flaky-test registry, usage telemetry — optional | No — local coordination state |
 | `.pipeline/pm-last-run.txt` | product-manager | One-line status (`COMPLETED`/`FAILED`/`EMPTY`) read by the scripts | No — local coordination state |
 | `.claude/hooks/gate.sh` | you (copied from `hooks/`) | Deterministic lint/typecheck/build/unit-test gate | Yes |
 | `.claude/hooks/pm-state.sh` | you (copied from `hooks/`) | product-manager's deterministic bookkeeping: handoff pickup, queue order, `.stories-reviewed/` copy + checkbox count, move to `.completed/`, `pm-last-run.txt`, feature branch, staging without coordination files | Yes |
+| `.claude/hooks/detect-conventions.sh` | you (copied from `hooks/`) | conventions-scout's mechanical scan: repos, frameworks from dependencies, the gate's exact commands, test/locale/contract locations, security tools — read-only, prints Markdown | Yes |
+| `.claude/templates/user-manual/` | you (copied from `templates/`) | Skeleton of the bilingual user manual: shared `assets/` (navigation tree and search results built from `site-data.js`) and `page.html` (language switch and search box in plain HTML); doc-writer copies it once per language and then only writes page content and `site-data.js` entries | Yes |
 | `contracts/openapi.yaml` | analyst (source of truth); nobody else edits it | API contract shared by backend, frontend, integrator | Yes — project deliverable |
 | `tests/e2e/<story-id>/` | story-validator | Automated acceptance tests (FR + EN) — the regression suite | Yes — project deliverable |
 | `graphify-out/` | Graphify (external tool, not one of these agents) | Deterministic code knowledge graph — `GRAPH_REPORT.md`, `graph.json`, `graph.html` — every agent queries it for impact analysis if present. See section 6 for setup. | Yes, per Graphify's own convention (except `cost.json`) |
@@ -225,15 +240,15 @@ All 12 live in [`agents/`](agents/).
 | `agents/analyst.md` | Appends the technical plan (incl. UI/UX) into each story file |
 | `agents/dev-frontend.md` | Web and mobile (React Native) client implementation (stubbed API clients) |
 | `agents/dev-backend.md` | Backend implementation |
-| `agents/unit-tester.md` | Unit tests for services/handlers/repositories/components |
-| `agents/dev-integrator.md` | Wires client (web/mobile) to real backend controllers, incl. offline/push/deep-link wiring on mobile |
+| `agents/unit-tester.md` | Unit tests for services/handlers/repositories/components; rewrites or removes tests a dev agent parked as `OBSOLETE-TEST` |
+| `agents/dev-integrator.md` | Wires client (web/mobile) to real backend controllers, incl. offline/push/deep-link wiring on mobile; one contract check after wiring |
 | `agents/story-validator.md` | Turns criteria into automated e2e tests (FR + EN), checks off passing ones, runs the full e2e suite as regression, no app-code fixes |
 | `agents/doc-writer.md` | Writes/updates dev docs and the beginner-level user manual after a story passes validation |
 | `agents/code-reviewer.md` | Reviews dev-frontend/dev-backend/dev-integrator's changes with inline `REVIEW:` comments, loops with them until resolved |
-| `agents/conventions-scout.md` | Writes/refreshes `.pipeline/conventions.md` (stack, conventions, exact commands) once instead of every agent re-detecting them |
+| `agents/conventions-scout.md` | Writes/refreshes `.pipeline/conventions.md` (stack, conventions, exact commands) once instead of every agent re-detecting them, starting from `detect-conventions.sh` |
 | `agents/security-reviewer.md` | Reviews every changed file for security (authZ, validation, secrets, dependencies, mobile), inline `SECURITY:` comments, loops with the dev agents |
 
-Models: `opus` for product-owner and analyst (planning errors are the most expensive downstream); `haiku` for unit-tester; `sonnet` for everything else — doc-writer stays on sonnet because the beginner-level French/English manual needs natural wording.
+Models: `opus` for product-owner (planning errors are the most expensive downstream); analyst moved from `opus` to `sonnet` on 2026-10-21 after an A/B on the eval kit (same mean score, about 70% cheaper); `haiku` for unit-tester; `sonnet` for everything else — doc-writer stays on sonnet because the beginner-level French/English manual needs natural wording.
 
 Existing published alternatives found while designing each role are listed under [Alternatives considered](#alternatives-considered) — kept out of the prompts so agents don't pay for them on every call.
 

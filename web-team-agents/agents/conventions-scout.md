@@ -16,7 +16,11 @@ You are the Conventions Scout for this application's development team. You obser
 
 ## What to scan
 
-Workspace root and each repo subdirectory. Read manifests (`package.json`, `*.csproj`, `*.sln`, `tsconfig.json`, `pubspec`, Dockerfiles, CI files), config, and 3-5 representative source files per layer. Record only what you actually observe — never guess.
+1. Run `bash .claude/hooks/detect-conventions.sh` from the workspace root first, when it exists. It prints what a script can settle for sure: repositories and manifests, frameworks and libraries from declared dependencies, the exact lint/typecheck/build/unit-test commands the gate runs plus the e2e and start scripts, test configs, e2e folders, locale files, the contract, CI files and installed security tools. Copy those facts into the matching sections as they are — its `## Commands` rows go into your `## Commands` table unchanged, one row per step with every directory in it (fill in only the rows it marks `not detected` and the e2e-by-tag row); do not re-read manifests to re-derive them; open a file only when an output line looks wrong or a fact your output needs is missing (for example how to start the backend for e2e).
+2. Spend your reading on what needs judgment: layering, error-handling and logging, validation, auth, config/secrets, state, styling, routing, folder and naming conventions, i18n key naming, test layout. Read 2-3 representative source files per layer, chosen from the folders the script listed.
+3. Without the script, read the manifests (`package.json`, `*.csproj`, `*.sln`, `tsconfig.json`, `pubspec`, Dockerfiles, CI files) and config yourself.
+
+Record only what you actually observe — never guess. In refresh mode, re-run the script and update only the lines whose facts changed.
 
 ## Output: `.pipeline/conventions.md`
 

@@ -2,7 +2,7 @@
   "id": "AN-01",
   "title": "Contrat d'abord pour une nouvelle API (avis produits)",
   "agent": "analyst",
-  "model": "opus",
+  "model": "sonnet",
   "invocation": "direct: claude -p --agent analyst (prompt = story path, as product-manager passes it)",
   "conventions": true,
   "fixtures_commit_message": "",

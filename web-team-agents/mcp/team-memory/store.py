@@ -331,6 +331,29 @@ class Store:
         """Render logged decisions back into the same Agent/Story/Ref/Problem/Choice/Decision markdown
         format as the .decisions/*.decisions.md files, so a human-readable file can be regenerated from
         the database. story/agent filter when given ('' = no filter); results are chronological."""
+        entries = [entry for _, entry in self._decision_entries(story, agent)]
+        return {"markdown": "\n\n".join(entries), "count": len(entries)}
+
+    def export_decisions_files(self, story: str, root: str | Path) -> dict:
+        """Append one story's logged decisions to <root>/.decisions/<agent>.decisions.md, one file per agent.
+        Entries already in a file are skipped, so calling it again for the same story writes nothing new and
+        entries agents wrote to the files themselves (memory off or failing) are kept."""
+        story = _name(story, "story")
+        folder = Path(root) / ".decisions"
+        written: dict[str, int] = {}
+        for agent, entry in self._decision_entries(story, ""):
+            path = folder / f"{agent}.decisions.md"
+            existing = path.read_text(encoding="utf-8") if path.exists() else ""
+            if entry in existing:
+                continue
+            folder.mkdir(parents=True, exist_ok=True)
+            separator = "" if not existing.strip() else "\n" if existing.endswith("\n") else "\n\n"
+            with path.open("a", encoding="utf-8", newline="\n") as f:
+                f.write(f"{separator}{entry}\n")
+            written[agent] = written.get(agent, 0) + 1
+        return {"story": story, "written": written, "files": sorted(f".decisions/{a}.decisions.md" for a in written)}
+
+    def _decision_entries(self, story: str, agent: str) -> list[tuple[str, str]]:
         story = _name(story, "story", optional=True)
         agent = _name(agent, "agent", optional=True)
         where, params = ["kind='decision'", "superseded_by IS NULL"], []
@@ -344,8 +367,7 @@ class Store:
             rows = c.execute(
                 f"SELECT agent, story, content, ts FROM memories WHERE {' AND '.join(where)} ORDER BY ts",
                 params).fetchall()
-        entries = [f"Agent: {r['agent']}\nStory: {r['story'] or '(project-wide)'}\n{r['content']}" for r in rows]
-        return {"markdown": "\n\n".join(entries), "count": len(entries)}
+        return [(r["agent"], f"Agent: {r['agent']}\nStory: {r['story'] or '(project-wide)'}\n{r['content']}") for r in rows]
 
     def decisions_digest(self, min_count: int = 2) -> dict:
         min_count = max(1, int(min_count))
@@ -758,6 +780,9 @@ class Store:
 
     def conventions(self, role: str = "", topic: str = "", file: str = "", max_chars: int = 9000,
                     agent: str = "", story: str = "") -> dict:
+        return self._track("conventions", self._conventions(role, topic, file, max_chars), agent, story)
+
+    def _conventions(self, role: str = "", topic: str = "", file: str = "", max_chars: int = 9000) -> dict:
         """Return only the sections of .pipeline/conventions.md that matter. role = your agent name (picks the sections
         relevant to that role); topic = keywords (matched against headings first, then bodies). With neither, only an
         outline (headings + sizes) comes back."""
@@ -807,7 +832,7 @@ class Store:
         if not sections:
             out["hint"] = "pass role=<your agent name> and/or topic=<keywords> to get content"
         out["returned_chars"] = len(json.dumps(out, ensure_ascii=False, default=str))
-        return self._track("conventions", out, agent, story)
+        return out
 
     # -- token savers: reuse from earlier stories ----------------------------------------------
     def similar_stories(self, story: str, limit: int = 3, agent: str = "") -> dict:
@@ -952,6 +977,10 @@ class Store:
 
     # -- aggregates --------------------------------------------------------------------------
     def story_context(self, story: str, per_section: int = 6, agent: str = "", max_chars: int = 12000) -> dict:
+        res, ids = self._story_context(story, per_section, max_chars)
+        return self._track("story_context", res, agent, res["story"], ids)
+
+    def _story_context(self, story: str, per_section: int = 6, max_chars: int = 12000) -> tuple[dict, list[int]]:
         story = _name(story, "story")
         n = max(1, min(int(per_section), 15))
         max_chars = max(2000, min(int(max_chars), 60000))
@@ -1000,7 +1029,26 @@ class Store:
         ids = [x["id"] for sec in ("rules", "knowledge", "decisions", "notes") for x in res[sec]]
         if res["handoff"]:
             ids.append(res["handoff"]["id"])
-        return self._track("story_context", res, agent, story, ids)
+        return res, ids
+
+    def agent_briefing(self, story: str, role: str, agent: str = "", max_chars: int = 12000) -> dict:
+        """Everything an agent reads at the start of a story, in one call: the story_context sections (handoff,
+        standing rules, knowledge incl. review patterns, this story's decisions, open tasks for this role, locks) plus
+        the conventions sections for the role. Half the budget goes to each part; a missing conventions file is
+        reported, not raised, so the briefing still works before conventions-scout has run."""
+        role = _name(role, "role")
+        max_chars = max(4000, min(int(max_chars), 60000))
+        ctx, ids = self._story_context(story, 6, max_chars // 2)
+        ctx["tasks"] = [t for t in ctx["tasks"] if t["role"] in ("", role)]
+        try:
+            conv = self._conventions(role=role, max_chars=max_chars // 2)
+            ctx["conventions"] = {"file": conv["file"], "sections": conv["sections"]}
+            if conv.get("not_included"):
+                ctx["conventions"]["not_included"] = conv["not_included"]
+        except ValueError as e:
+            ctx["conventions"] = {"missing": str(e)}
+        ctx["role"] = role
+        return self._track("agent_briefing", ctx, agent or role, ctx["story"], ids)
 
     def stats(self) -> dict:
         with self._connect() as c:
