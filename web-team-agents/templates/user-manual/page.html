@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="{{lang}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{page title}}</title>
+  <link rel="stylesheet" href="assets/manual.css">
+</head>
+<body>
+  <header id="manual-top">
+    <a class="manual-home" href="index.html">{{manual title}}</a>
+    <a class="manual-lang" href="../{{other lang}}/{{this file name}}" hreflang="{{other lang}}">{{other language name}}</a>
+  </header>
+  <aside>
+    <div id="manual-search" role="search">
+      <label for="manual-search-box">{{search label}}</label>
+      <input id="manual-search-box" type="search" autocomplete="off">
+      <ul id="manual-search-results" aria-live="polite"></ul>
+    </div>
+    <nav id="manual-nav"></nav>
+  </aside>
+  <main>
+    <h1>{{page title}}</h1>
+    <p>{{one sentence: what this screen lets the reader do}}</p>
+    <ol class="steps">
+      <li>{{one action the reader takes, in plain words}}</li>
+    </ol>
+  </main>
+  <script src="site-data.js"></script>
+  <script src="assets/manual.js"></script>
+</body>
+</html>

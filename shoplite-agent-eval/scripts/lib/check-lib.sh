@@ -100,9 +100,11 @@ memory_line_present () {
 }
 
 decision_logged () {  # decision_logged <agent-name> [regex the entry text must match]
-  local f="$RUN_DIR/.decisions/$1.decisions.md"
-  [ -s "$f" ] || { echo "missing $f"; return 1; }
-  if [ -n "${2:-}" ]; then grep -Eiq "$2" "$f" || { echo "no entry matching /$2/ in $f"; return 1; }; fi
+  # Agents log to team memory (log_decision) when it is available, else to .decisions/<agent>.decisions.md.
+  local f="$RUN_DIR/.decisions/$1.decisions.md" text
+  text="$(cat "$f" 2>/dev/null; evalkit decision-text "$RUN_DIR" "$1")"
+  [ -n "$text" ] || { echo "no decision from $1 in $f or team memory"; return 1; }
+  if [ -n "${2:-}" ]; then printf '%s' "$text" | grep -Eiq "$2" || { echo "no $1 decision matching /$2/"; return 1; }; fi
 }
 
 grep_absent () {  # grep_absent <regex> <path...>  (ERE, case-sensitive, ignores node_modules/bin/obj; missing paths are fine)

@@ -105,7 +105,7 @@ par les contrôles structurels / de sécurité de `check.sh`).
 | Reviewers / analyst : commentaires uniquement | `logic_changes` vide (lignes non-commentaire ajoutées/supprimées) |
 | Permissions de rôle | `git diff --name-only eval-start` + fichiers non suivis, comparés à `scope.allowed` / `scope.forbidden` |
 | Contrat | `contracts/openapi.yaml` inchangé par les dev-* ; spec émis conforme (tests cachés `*_Contract_*` / `*_EmittedSpec_*`) ; YAML valide (`scripts/tools/yaml2json.mjs`) |
-| Décisions | nouvelles entrées `Agent:` dans `.decisions/*.decisions.md` (`decisions.json`) |
+| Décisions | nouvelles entrées `Agent:` dans `.decisions/*.decisions.md` et décisions `log_decision` de `.pipeline/team-memory.db` (clés `team-memory:<agent>`, `decisions.json`) |
 | Rapport | ligne `Memory: available|unavailable` (`metrics.json.memory_line`) |
 | Fichiers de pipeline | `.pipeline/pm-last-run.txt`, `.completed/`, `.stories-reviewed/`, `.validated-stories/`, `.pipeline/handoffs/` (hash avant/après dans `coordination.json`) |
 | Tests non affaiblis | fichiers de test supprimés, nombre de `[Fact]`/`[Theory]`/`it(` en baisse, `.skip`/`.only`/`Skip =` ajoutés |

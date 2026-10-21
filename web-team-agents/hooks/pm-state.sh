@@ -104,7 +104,8 @@ COORDINATION_EXCLUDES=(
   ':(exclude).user-stories' ':(exclude).stories-reviewed' ':(exclude).validated-stories'
   ':(exclude).completed' ':(exclude).decisions' ':(exclude).pipeline/pm-progress.md'
   ':(exclude).pipeline/pm-last-run.txt' ':(exclude).pipeline/decisions-digest.md'
-  ':(exclude,glob).pipeline/team-memory.db*' ':(exclude).pipeline/handoffs' ':(exclude).claude/run.log'
+  ':(exclude,glob).pipeline/team-memory.db*' ':(exclude).pipeline/handoffs' ':(exclude).pipeline/gate-pass'
+  ':(exclude).claude/run.log'
 )
 
 cmd_git_stage () {

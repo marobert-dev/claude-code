@@ -46,7 +46,7 @@ evalkit decisions "$RUN" "$META/decisions-baseline.json" > "$EVAL/decisions.json
 # ---- 2. gate -------------------------------------------------------------------------------------------
 if [ -z "${EVAL_SKIP_GATE:-}" ]; then
   info "running the gate"
-  ( cd "$RUN" && bash .claude/hooks/gate.sh < /dev/null ) > "$EVAL/gate.log" 2>&1
+  ( cd "$RUN" && GATE_NO_CACHE=1 bash .claude/hooks/gate.sh < /dev/null ) > "$EVAL/gate.log" 2>&1
   GATE_RC=$?
 else
   GATE_RC=99; echo "skipped (EVAL_SKIP_GATE)" > "$EVAL/gate.log"

@@ -18,4 +18,5 @@ playwright-report/
 .pipeline/pm-last-run.txt
 .pipeline/decisions-digest.md
 .pipeline/team-memory.db*
+.pipeline/gate-pass
 .pipeline/handoffs/

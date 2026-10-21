@@ -2,7 +2,7 @@
   "id": "AN-02",
   "title": "Plan de checkout atomique : TODO aux bons emplacements, changement cassant identifié",
   "agent": "analyst",
-  "model": "opus",
+  "model": "sonnet",
   "invocation": "direct: claude -p --agent analyst (prompt = story path, as product-manager passes it)",
   "conventions": true,
   "fixtures_commit_message": "",

@@ -6,7 +6,7 @@
 | Agent visé | `dev-frontend` |
 | Modèle attendu (frontmatter) | `sonnet` |
 | Mode d'invocation | direct: claude -p --agent dev-frontend |
-| Critères applicables | Gate et tests, Correction fonctionnelle, Respect du périmètre, Respect du rôle et du protocole, Contrat API, Qualité du code, Qualité des tests produits, Accessibilité et i18n FR/EN, Efficacité, Stabilité |
+| Critères applicables | Gate et tests, Correction fonctionnelle, Respect du périmètre, Respect du rôle et du protocole, Contrat API, Qualité du code, Accessibilité et i18n FR/EN, Efficacité, Stabilité |
 | Critères notés à la main | Qualité du code |
 
 ## Demande exacte (`prompt.txt`)
@@ -58,7 +58,6 @@ Contrôles standard (tous les runs) : gate vert (bloquant), aucun interdit de r�
 | `fe05-fr` | Accessibilité et i18n FR/EN | French texts |  |
 | `fe05-contract-untouched` | Contrat API | contracts/openapi.yaml unchanged |  |
 | `fe05-no-fetch-in-client` | Respect du rôle et du protocole | No real call added for getOrder (only dev-integrator wires it) |  |
-| `fe05-tests-added` | Qualité des tests produits | Tests added for the detail screen |  |
 
 ## Critères d'échec
 

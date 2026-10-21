@@ -7,8 +7,12 @@ test-results/
 playwright-report/
 coverage/
 
-# Local scoring output
+# Local scoring output (campaign.score.<label>.json included)
 *.score.json
+*.score.*.json
+
+# Python bytecode of the scripts
+__pycache__/
 
 # Team-memory database created by the project .mcp.json
 .pipeline/

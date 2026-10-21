@@ -14,6 +14,7 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -26,6 +27,7 @@ MARKERS = ("REVIEW:", "SECURITY:", "TODO:")
 TEST_DIRS = ("backend/tests/", "frontend/tests/", "tests/e2e/")
 CS_TEST_CASE = re.compile(r"\[(Fact|Theory)\b")
 TS_TEST_CASE = re.compile(r"(?<![\w.])(it|test)(\.each\([^)]*\))?\s*\(")
+OBSOLETE_MARKER = "OBSOLETE-TEST:"
 SKIP_PATTERN = re.compile(r"(\bit\.skip\(|\btest\.skip\(|\bdescribe\.skip\(|\.only\(|Skip\s*=)")
 COMMENT_START = re.compile(r"^\s*(//|/\*|\*|#|\{/\*|<!--|-->|\*/)")
 TRAILING_COMMENT = re.compile(r"\s*(//|\{/\*).*$")
@@ -231,7 +233,7 @@ def diff_metrics(run: str, meta: str, ref: str, task: dict) -> dict:
                 logic_changes.append({"path": path, "change": "-", "line": m[:160]})
 
     # Test protection: deleted test files, fewer test cases, newly skipped tests.
-    tests = {"deleted_files": [], "reduced_files": [], "skipped_added": []}
+    tests = {"deleted_files": [], "reduced_files": [], "skipped_added": [], "obsolete_parked": []}
     for f in files:
         path = f["path"]
         if not path.startswith(TEST_DIRS):
@@ -246,11 +248,25 @@ def diff_metrics(run: str, meta: str, ref: str, task: dict) -> dict:
                 after = count_test_cases((Path(run) / path).read_text(encoding="utf-8"), path)
             except OSError:
                 after = 0
-            if after < before:
-                tests["reduced_files"].append({"path": path, "before": before, "after": after})
-        for line in added_lines.get(path, []):
-            if SKIP_PATTERN.search(line):
+        else:
+            before = after = 0
+        added = added_lines.get(path, [])
+        parked = 0
+        for i, line in enumerate(added):
+            if not SKIP_PATTERN.search(line):
+                continue
+            # A dev agent parks a test its story made obsolete (skip + OBSOLETE-TEST marker on that line or
+            # the one above); unit-tester then rewrites or removes it. `.only(` is never a parking.
+            marked = OBSOLETE_MARKER in line or (i > 0 and OBSOLETE_MARKER in added[i - 1])
+            if marked and ".only(" not in line:
+                tests["obsolete_parked"].append({"path": path, "line": line.strip()[:160]})
+                parked += count_test_cases(line, path) == 0
+            else:
                 tests["skipped_added"].append({"path": path, "line": line.strip()[:160]})
+        # A parked `it.skip(` no longer counts as a case (a parked `[Fact(Skip=...)]` still does), so it must
+        # not also count as a reduction.
+        if after + parked < before:
+            tests["reduced_files"].append({"path": path, "before": before, "after": after})
 
     # A file whose only change is added TODO comments (the analyst's markers) is not a scope or role breach.
     todo_only = {
@@ -580,8 +596,31 @@ def cmd_decisions(a) -> None:
     for p in sorted((run / ".decisions").glob("*.md")) if (run / ".decisions").exists() else []:
         text = p.read_text(encoding="utf-8", errors="replace")
         entries[p.name] = len(re.findall(r"^\s*\**Agent:?\**", text, re.M))
+    for agent, n in team_memory_decisions(run):
+        entries[f"team-memory:{agent}"] = n
     before = baseline.get("entries", {})
     out({"entries": entries, "new_entries": {k: v - before.get(k, 0) for k, v in entries.items() if v - before.get(k, 0) > 0}})
+
+
+def team_memory_decisions(run: Path, agent: str = "") -> list:
+    """(agent, count) per agent, or (topic, content) rows when agent is given, from the run's team-memory DB.
+    With team memory on, agents log decisions with log_decision instead of writing .decisions/ files."""
+    db = run / ".pipeline" / "team-memory.db"
+    if not db.exists():
+        return []
+    con = sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True)
+    try:
+        live = "kind='decision' AND superseded_by IS NULL"
+        if agent:
+            return con.execute(f"SELECT tags, content FROM memories WHERE {live} AND agent=? ORDER BY ts", (agent,)).fetchall()
+        return con.execute(f"SELECT agent, COUNT(*) FROM memories WHERE {live} GROUP BY agent").fetchall()
+    finally:
+        con.close()
+
+
+def cmd_decision_text(a) -> None:
+    for topic, content in team_memory_decisions(Path(a.run), a.agent):
+        print(f"Topic: {topic}\n{content}\n")
 
 
 # ----------------------------------------------------------------------------- CLI
@@ -613,6 +652,7 @@ def main() -> None:
     s.set_defaults(fn=cmd_metrics)
     s = sub.add_parser("seed-memory"); s.add_argument("run"); s.add_argument("seed"); s.add_argument("store_dir"); s.set_defaults(fn=cmd_seed_memory)
     s = sub.add_parser("decisions"); s.add_argument("run"); s.add_argument("baseline"); s.set_defaults(fn=cmd_decisions)
+    s = sub.add_parser("decision-text"); s.add_argument("run"); s.add_argument("agent"); s.set_defaults(fn=cmd_decision_text)
     s = sub.add_parser("compose-result"); s.add_argument("run"); s.add_argument("meta"); s.add_argument("task_json"); s.set_defaults(fn=cmd_compose_result)
 
     args = p.parse_args()

@@ -4,7 +4,7 @@
 |---|---|
 | ID | AN-01 |
 | Agent visé | `analyst` |
-| Modèle attendu (frontmatter) | `opus` |
+| Modèle attendu (frontmatter) | `sonnet` |
 | Mode d'invocation | direct: claude -p --agent analyst (prompt = story path, as product-manager passes it) |
 | Critères applicables | Correction fonctionnelle, Respect du périmètre, Respect du rôle et du protocole, Contrat API, Sécurité, Efficacité, Stabilité |
 | Critères notés à la main | aucun |

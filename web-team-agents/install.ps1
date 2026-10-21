@@ -35,9 +35,15 @@ if ($Workspace) {
     New-Item -ItemType Directory -Force -Path (Join-Path $Workspace "scripts") | Out-Null
     Copy-Item (Join-Path $ScriptDir "hooks\gate.sh") (Join-Path $Workspace ".claude\hooks\gate.sh") -Force
     Copy-Item (Join-Path $ScriptDir "hooks\pm-state.sh") (Join-Path $Workspace ".claude\hooks\pm-state.sh") -Force
+    Copy-Item (Join-Path $ScriptDir "hooks\detect-conventions.sh") (Join-Path $Workspace ".claude\hooks\detect-conventions.sh") -Force
     Copy-Item (Join-Path $ScriptDir "scripts\run-queue.sh") (Join-Path $Workspace "scripts\") -Force
     Copy-Item (Join-Path $ScriptDir "scripts\run-parallel.sh") (Join-Path $Workspace "scripts\") -Force
     Write-Host "    Copied gate.sh, pm-state.sh, run-queue.sh, run-parallel.sh."
+    $Templates = Join-Path $Workspace ".claude\templates"
+    New-Item -ItemType Directory -Force -Path $Templates | Out-Null
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $Templates "user-manual")
+    Copy-Item (Join-Path $ScriptDir "templates\user-manual") $Templates -Recurse -Force
+    Write-Host "    Copied the user-manual template (read by doc-writer) to .claude\templates\user-manual\."
     Write-Host "    NOTE: these are bash scripts - run them from Git Bash or WSL, not PowerShell."
     Write-Host "    NOT auto-merged: $ScriptDir\hooks\settings.snippet.json into $Workspace\.claude\settings.json"
     Write-Host "    Back up settings.json first, then merge that snippet by hand"

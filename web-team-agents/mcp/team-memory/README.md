@@ -30,8 +30,9 @@ Verify: `claude mcp list` shows `team-memory`; inside a session run `/mcp`, then
 | Group | Tools | Purpose |
 |---|---|---|
 | Memory | `remember`, `recall`, `get_memory`, `retire_memory` | Short facts by kind (`note`, `decision`, `convention`, `gotcha`, `contract`, `review-pattern`, `handoff`, `fact`, `rule`), full-text search (FTS5, ranked). Same kind+key+story = replaces the old entry, history kept. |
-| Decisions | `log_decision`, `decisions_digest` | Same fields as the `.decisions/` format plus a kebab-case `topic`; the digest lists topics that recur. |
+| Decisions | `log_decision`, `decisions_digest`, `export_decisions_markdown`, `export_decisions_files` | Same fields as the `.decisions/` format plus a kebab-case `topic`; the digest lists topics that recur. `export_decisions_files(story)` appends that story's entries to `.decisions/<agent>.decisions.md` in the server's working directory (entries already there are skipped) and returns only counts. |
 | Briefing | `story_context` | One call: last handoff, relevant conventions/contracts/gotchas, decisions, notes, open tasks, active locks. |
+| Agent start | `agent_briefing` | One call per agent at the start of a story: `story_context` (tasks filtered to the role) plus the `.pipeline/conventions.md` sections for that role, half the `max_chars` budget each. Replaces `story_context` + `recall(kind="review-pattern")` + `conventions(role)`; a missing conventions file is reported in the result, not raised. |
 | Task board | `task_post`, `task_claim`, `task_heartbeat`, `task_release`, `task_finish`, `task_list` | Atomic claims, priorities, dependencies, lease expiry (a crashed agent releases its task automatically). |
 | Locks | `lock_acquire`, `lock_release`, `lock_list` | Advisory, expiring locks on file paths or logical resources; re-entrant for the holder. |
 | Task checkpoint | `task_checkpoint` | One atomic upsert by `(story, role)` — the cheap way to mirror pipeline progress (replaces post/claim/finish). |

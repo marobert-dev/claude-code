@@ -114,6 +114,26 @@ def test_export_decisions_markdown_roundtrips_and_filters(s):
     assert none_found == {"markdown": "", "count": 0}
 
 
+def test_export_decisions_files_appends_per_agent_once(s, tmp_path):
+    s.log_decision("analyst", "01-a", "scope-gap", "AC2", "no limit given", "10|20", "20")
+    s.log_decision("dev-backend", "01-a", "retry", "AC3", "timeout unclear", "5s|30s", "30s")
+    s.log_decision("analyst", "02-b", "other", "r", "p", "c", "d")
+    handwritten = tmp_path / ".decisions" / "analyst.decisions.md"
+    handwritten.parent.mkdir()
+    handwritten.write_text("Agent: analyst\nStory: 00 - setup\nDecision: written by hand", encoding="utf-8")
+
+    first = s.export_decisions_files("01-a", tmp_path)
+    again = s.export_decisions_files("01-a", tmp_path)
+
+    assert first["written"] == {"analyst": 1, "dev-backend": 1}
+    assert again["written"] == {}
+    analyst = handwritten.read_text(encoding="utf-8")
+    assert analyst.startswith("Agent: analyst\nStory: 00 - setup")
+    assert "\n\nAgent: analyst\nStory: 01-a\n" in analyst
+    assert analyst.count("Story: 01-a") == 1 and "02-b" not in analyst
+    assert "Decision: 30s" in (tmp_path / ".decisions" / "dev-backend.decisions.md").read_text(encoding="utf-8")
+
+
 def test_task_checkpoint_upserts_without_claim(s):
     r1 = s.task_checkpoint(story="s5", role="analyst", status="done", detail="plan written")
     assert r1["status"] == "done"
@@ -248,7 +268,7 @@ def test_mcp_stdio_roundtrip(tmp_path):
             async with ClientSession(streams[0], streams[1]) as sess:
                 await sess.initialize()
                 names = {t.name for t in (await sess.list_tools()).tools}
-                assert {"remember", "recall", "task_claim", "lock_acquire", "story_context", "task_checkpoint", "contract_lookup", "conventions",
+                assert {"remember", "recall", "task_claim", "lock_acquire", "story_context", "agent_briefing", "export_decisions_files", "task_checkpoint", "contract_lookup", "conventions",
                         "similar_stories", "queue_status", "rules_briefing", "promote_rules", "flaky_report", "flaky_list",
                         "flaky_resolve", "usage_report"} <= names
                 r = await sess.call_tool("remember", {"agent": "analyst", "kind": "gotcha", "content": "use UTC everywhere", "story": "s1"})
@@ -471,6 +491,33 @@ def test_conventions_by_role_topic_and_outline(ws):
     assert [s["heading"] for s in fe["sections"]] == ["Frontend (web)"]
     assert [s["heading"] for s in ws.conventions(topic="supertest")["sections"]] == ["Tests"]
     with pytest.raises(ValueError): ws.conventions(file="../x.md")
+
+
+def test_agent_briefing_bundles_story_context_and_role_conventions(ws):
+    ws.remember("code-reviewer", "review-pattern", "Validate ids at the boundary", key="ids")
+    ws.log_decision("analyst", "20-x", "id-format", "AC", "p", "c", "ids are uuids")
+    ws.task_post("Obsolete test: a", story="20-x", role="unit-tester")
+    ws.task_post("Wire x", story="20-x", role="dev-backend")
+    b = ws.agent_briefing("20-x", "dev-backend")
+    assert b["story"] == "20-x" and b["role"] == "dev-backend"
+    assert [k["kind"] for k in b["knowledge"]] == ["review-pattern"]
+    assert [d["story"] for d in b["decisions"]] == ["20-x"]
+    assert [t["role"] for t in b["tasks"]] == ["dev-backend"]                                   # other roles' tasks stay out
+    heads = [c["heading"] for c in b["conventions"]["sections"]]
+    assert heads[0] == "Backend" and "Frontend (web)" not in heads
+    tools = {t["tool"]: t for t in ws.usage_report()["by_tool"]}
+    assert tools["agent_briefing"]["calls"] == 1 and "story_context" not in tools and "conventions" not in tools
+    assert {a["agent"] for a in ws.usage_report()["by_agent"]} == {"dev-backend"}
+
+
+def test_agent_briefing_without_conventions_file_and_capped(s, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    for i in range(8):
+        s.remember("analyst", "fact", f"fact {i} " + "x" * 700, story="21-y", key=f"k{i}")
+    b = s.agent_briefing("21-y", "analyst", max_chars=4000)
+    assert "missing" in b["conventions"] and b.get("truncated")
+    assert len(json.dumps(b)) <= 4500
+    with pytest.raises(ValueError): s.agent_briefing("21-y", "")
 
 
 def test_rules_promote_automatically_and_reach_story_context(ws):

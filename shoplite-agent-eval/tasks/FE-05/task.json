@@ -8,7 +8,7 @@
   "fixtures_commit_message": "Plan story 14: order detail screen",
   "memory_line_expected": true,
   "defects": [],
-  "criteria": ["gate_tests", "functional", "scope", "protocol", "contract", "code_quality", "tests_quality", "a11y_i18n", "efficiency", "stability"],
+  "criteria": ["gate_tests", "functional", "scope", "protocol", "contract", "code_quality", "a11y_i18n", "efficiency", "stability"],
   "manual_criteria": ["code_quality"],
   "scope": {
     "allowed": ["frontend/src/**", "frontend/tests/**/*.ts", "frontend/tests/**/*.tsx", ".decisions/**"],
