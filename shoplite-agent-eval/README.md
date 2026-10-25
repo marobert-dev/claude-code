@@ -40,18 +40,25 @@ npm --prefix scripts/tools install      # convertisseur YAML -> JSON utilisé pa
 dotnet restore app-template/backend/ShopLite.sln
 ```
 
-## 2. Installer les agents évalués
+## 2. Agents évalués
 
-```bash
-bash ../web-team-agents/install.sh    # copie agents/*.md vers ~/.claude/agents/ (global)
-```
+Rien à installer : `run-agent.sh` convertit `$WEB_TEAM_AGENTS_DIR/agents/*.md` en JSON (`scripts/tools/agents2json.mjs`)
+et le passe à `claude --agents`. Un run mesure donc les agents du dépôt à la révision qu'il enregistre (`agents_sha`,
+suffixe `-dirty` quand `agents/` a des modifications non commitées), pas ceux de `~/.claude/agents`.
 
 Optionnel mais nécessaire pour noter la ligne `Memory: available` et pour ADV-02 : le serveur MCP `team-memory`
-installé et enregistré en portée utilisateur (`web-team-agents/mcp/team-memory/README.md`). `new-run.sh` utilise
-`store.py` de `TEAM_MEMORY_SRC` (défaut `~/.mcp/team-memory`) pour pré-remplir la mémoire d'une tâche.
+(`web-team-agents/mcp/team-memory/README.md`), passé au run par `--mcp-config` (défaut : le `.mcp.json` du kit, qui
+pointe vers la copie installée dans `~/.mcp/team-memory`). `new-run.sh` utilise `store.py` de `TEAM_MEMORY_SRC`
+(défaut `~/.mcp/team-memory`) pour pré-remplir la mémoire d'une tâche.
+
+Les scripts de `app-template/.claude/hooks/` et `app-template/.claude/templates/` sont des copies de ceux de
+`web-team-agents` (les hooks des agents les appellent) : recopiez-les après chaque modification de `hooks/` ou
+`templates/` (`cp ../web-team-agents/hooks/*.sh app-template/.claude/hooks/`, `cp -R ../web-team-agents/templates/e2e
+app-template/.claude/templates/`).
 
 Variables reconnues : `EVAL_RUNS_DIR` (défaut `~/shoplite-runs`), `WEB_TEAM_AGENTS_DIR` (défaut `../web-team-agents`),
-`TEAM_MEMORY_SRC`, `EVAL_ALLOWED_TOOLS`, `EVAL_CLAUDE_FLAGS`, `EVAL_TIMEOUT`, `EVAL_SKIP_GATE`.
+`TEAM_MEMORY_SRC`, `EVAL_MCP_CONFIG` (défaut `.mcp.json` du kit), `EVAL_ALLOWED_TOOLS`, `EVAL_CLAUDE_FLAGS`,
+`EVAL_TIMEOUT`, `EVAL_SKIP_GATE`.
 
 ## 3. Lancer l'application ShopLite
 
@@ -125,15 +132,16 @@ réussite/échec et le périmètre. La notation est décrite dans `docs/scoring-
 - **Isolation imparfaite** : un agent peut lire hors de son run avec Bash/Read. Le kit ne copie jamais son chemin dans
   le run, mais ne peut pas empêcher une exploration du disque. Pour une isolation stricte, exécutez les runs dans un
   conteneur ou une session utilisateur sans accès au dossier du kit.
-- **Configuration utilisateur** : `~/.claude/CLAUDE.md`, les skills et les plugins de l'utilisateur sont chargés par
-  `claude -p` et influencent les agents évalués. Comparez toujours des campagnes lancées avec la même configuration
-  (ou passez des options via `EVAL_CLAUDE_FLAGS`).
-- **Gate** : `.claude/hooks/gate.sh` est la copie exacte de `web-team-agents/hooks/gate.sh`. Sa détection .NET
-  (`ls "$d"/*.sln "$d"/*.csproj`) échoue quand un dossier contient un `.sln` sans `.csproj` (cas de `backend/`) et
-  ignorerait silencieusement `dotnet build/test` ; le template fournit donc `.claude/gate.local.sh`, mécanisme
-  d'override prévu par le gate. Le hook `SubagentStop` de `.claude/settings.json` ne se déclenche que pour des
-  sous-agents (PM-01/PM-02), pas pour un agent lancé directement avec `--agent` ; `check-run.sh` exécute donc
-  toujours le gate lui-même.
+- **Configuration utilisateur** : `run-agent.sh` lance `claude -p` avec `--setting-sources project,local`, qui écarte
+  les réglages, hooks et plugins de l'utilisateur (un hook personnel qui réécrit `npx …` cassait `--allowedTools`)
+  tout en gardant les hooks déclarés dans les agents (gate, garde de rôle, contrôle du plan). Les fichiers
+  `CLAUDE.md` de l'utilisateur restent chargés pour l'agent lancé en session ; les sous-agents ne les chargent plus
+  (`omitClaudeMd`). Comparez toujours des campagnes lancées avec la même configuration. Les campagnes antérieures
+  (jusqu'à `8c501af`) utilisaient `disableAllHooks`, qui coupait aussi les hooks des agents.
+- **Gate** : `.claude/hooks/gate.sh` est la copie exacte de `web-team-agents/hooks/gate.sh`. Le template fournit
+  aussi `.claude/gate.local.sh` (historique : l'ancienne détection .NET ignorait un dossier contenant un `.sln` sans
+  `.csproj`). Les agents de développement lancent le gate eux-mêmes (hook `Stop` de leur frontmatter), en session
+  comme en sous-agent ; `check-run.sh` l'exécute de toute façon après le run.
 - **Budgets d'efficacité** : seuils initiaux à recalibrer après une première campagne.
 
 
@@ -225,6 +233,6 @@ python scripts/score.py --all --update-sheet --json campaign.score.json
 ### À savoir
 
 - Note manuelle (qualité du code, etc.) : crée $RUN/.eval/manual-scores.json, par exemple {"code_quality": 2, "notes": "…"}, puis relance score.py.
-- Ta config personnelle influence les résultats : claude -p charge ton ~/.claude/CLAUDE.md, tes skills et tes plugins. Pour comparer deux campagnes, garde la même configuration.
-- Si tu modifies un agent dans web-team-agents, relance bash ../web-team-agents/install.sh pour le recopier dans ~/.claude/agents/ avant de refaire des runs.
+- Ta config personnelle influence peu les résultats : run-agent.sh écarte tes réglages, hooks et plugins, mais l'agent lancé en session charge encore ton ~/.claude/CLAUDE.md. Pour comparer deux campagnes, garde la même configuration.
+- Les runs utilisent directement les agents de web-team-agents/agents/ : inutile de les réinstaller dans ~/.claude/agents/. Si tu modifies hooks/ ou templates/, recopie-les dans app-template/.claude/ (section 2).
 - La description de chaque tâche (ce qui est attendu, les critères de réussite) se trouve dans tasks/<ID>/task.md, et la notation dans docs/scoring-criteria.md.

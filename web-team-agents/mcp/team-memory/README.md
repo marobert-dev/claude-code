@@ -25,14 +25,14 @@ stories share one memory. Override with `TEAM_MEMORY_DB=<absolute path>`. Add `.
 Verify: `claude mcp list` shows `team-memory`; inside a session run `/mcp`, then ask the assistant to call `stats`.
 **Also verify that a subagent can call it** (see TEAM-MEMORY-PROPOSAL.md, section 2) before changing any agent.
 
-## Tools (29)
+## Tools (31)
 
 | Group | Tools | Purpose |
 |---|---|---|
 | Memory | `remember`, `recall`, `get_memory`, `retire_memory` | Short facts by kind (`note`, `decision`, `convention`, `gotcha`, `contract`, `review-pattern`, `handoff`, `fact`, `rule`), full-text search (FTS5, ranked). Same kind+key+story = replaces the old entry, history kept. |
 | Decisions | `log_decision`, `decisions_digest`, `export_decisions_markdown`, `export_decisions_files` | Same fields as the `.decisions/` format plus a kebab-case `topic`; the digest lists topics that recur. `export_decisions_files(story)` appends that story's entries to `.decisions/<agent>.decisions.md` in the server's working directory (entries already there are skipped) and returns only counts. |
 | Briefing | `story_context` | One call: last handoff, relevant conventions/contracts/gotchas, decisions, notes, open tasks, active locks. |
-| Agent start | `agent_briefing` | One call per agent at the start of a story: `story_context` (tasks filtered to the role) plus the `.pipeline/conventions.md` sections for that role, half the `max_chars` budget each. Replaces `story_context` + `recall(kind="review-pattern")` + `conventions(role)`; a missing conventions file is reported in the result, not raised. |
+| Agent start | `agent_briefing` | One call per agent at the start of a story: `story_context` (tasks filtered to the role) plus the `.pipeline/conventions.md` sections for that role (`## Project rules` first for every role), half the `max_chars` budget each. Replaces `story_context` + `recall(kind="review-pattern")` + `conventions(role)`; a missing conventions file is reported in the result, not raised. |
 | Task board | `task_post`, `task_claim`, `task_heartbeat`, `task_release`, `task_finish`, `task_list` | Atomic claims, priorities, dependencies, lease expiry (a crashed agent releases its task automatically). |
 | Locks | `lock_acquire`, `lock_release`, `lock_list` | Advisory, expiring locks on file paths or logical resources; re-entrant for the holder. |
 | Task checkpoint | `task_checkpoint` | One atomic upsert by `(story, role)` — the cheap way to mirror pipeline progress (replaces post/claim/finish). |
@@ -42,6 +42,10 @@ Verify: `claude mcp list` shows `team-memory`; inside a session run `/mcp`, then
 | Misc | `stats` | Database path and counts. |
 
 Resources: `team-memory://story/{story}` and `team-memory://decisions-digest`.
+
+In an agent's `tools:` line, name the tools it calls (`mcp__team-memory__agent_briefing, mcp__team-memory__recall, …`)
+rather than `mcp__team-memory__*`: tools listed in an agent definition load up front instead of through tool search, so
+the wildcard puts all 31 schemas (about 6,700 tokens, measured 2026-10-25) into every call of that agent.
 
 ## Guarantees and limits
 
@@ -65,5 +69,5 @@ do not expose it beyond localhost.
 
 ```bash
 pip install pytest mcp
-pytest -q        # 27 tests: store logic, races across processes, and a real MCP stdio round-trip
+pytest -q        # 31 tests: store logic, races across processes, and a real MCP stdio round-trip
 ```

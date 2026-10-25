@@ -3,12 +3,21 @@
 # Run from the workspace root:  bash .claude/hooks/pm-state.sh <command> [args]
 #
 #   start                          Archive and print the latest handoff, list the queue in processing order,
-#                                  report whether conventions.md and gate.sh exist.
+#                                  report whether conventions.md (present/outdated/missing) and gate.sh exist.
 #                                  Empty queue: writes EMPTY to the status file and exits 3.
+#   criteria <story-file>          Print only the story's acceptance criteria.
+#   plan-check <story-file>|--latest
+#                                  Check the analyst's Technical Plan layout (a Scope: line, only the fixed ### subsections,
+#                                  no e2e test file outside tests/e2e/<slug>/). Prints "PLAN ok scope=<..> visual=<yes|no>",
+#                                  or "PLAN invalid" and the problems with exit 2. --latest = the newest story file.
+#   append <story-file> "<## Heading>"
+#                                  Append a section (body on stdin) to the story file, so it never has to be read back.
 #   validated <story-file>         Save the story to .stories-reviewed/, report its acceptance-criteria boxes.
 #                                  Exit 0 = every box checked, 1 = some unchecked (listed on stdout).
 #   finish completed <story-file>  Move the story to .completed/ and write COMPLETED <slug> to the status file.
 #   finish failed <story-file>     Leave the story queued and write FAILED <slug> to the status file.
+#                                  Both print the periodic duties now due ("DUE digest", "DUE refresh") from the number of
+#                                  completed stories, so every session follows the same schedule.
 #   git-branch <story-file> <repo>...
 #                                  In each repo: checkout dev, pull, create feature/<NN>-<description> off dev.
 #   git-stage <repo>               Stage every change in <repo> except coordination state, print what is staged.
@@ -40,7 +49,10 @@ cmd_start () {
 
   local stories
   stories="$(ls .user-stories/*.md 2>/dev/null | sort)"
-  [ -f .pipeline/conventions.md ] && echo "CONVENTIONS present" || echo "CONVENTIONS missing"
+  if [ ! -f .pipeline/conventions.md ]; then echo "CONVENTIONS missing"
+  # Written before conventions-scout copied the project's CLAUDE.md/AGENTS.md rules, which subagents no longer load.
+  elif ! grep -q '^## Project rules' .pipeline/conventions.md; then echo "CONVENTIONS outdated"
+  else echo "CONVENTIONS present"; fi
   [ -f .claude/hooks/gate.sh ] && echo "GATE present" || echo "GATE missing"
   if [ -z "$stories" ]; then
     write_status "EMPTY"
@@ -53,6 +65,80 @@ cmd_start () {
 
 acceptance_criteria () {
   awk '/^## Acceptance Criteria/{f=1;next} /^## /{f=0} f' "$1"
+}
+
+cmd_criteria () {
+  require_story "${1:-}"
+  acceptance_criteria "$1"
+}
+
+PLAN_SUBSECTIONS="shared|backend|web|mobile|existing code to change"
+
+cmd_plan_check () {
+  local story="${1:-}"
+  if [ "$story" = "--latest" ]; then
+    story="$(ls -t .user-stories/*.md 2>/dev/null | head -n 1)"
+    [ -n "$story" ] || { echo "PLAN none (no story file)"; return 0; }
+  fi
+  require_story "$story"
+  local slug plan scope_line scopes problems="" h p visual=no
+  slug="$(slug_of "$story")"
+  plan="$(awk '/^## Technical Plan[[:space:]]*$/{f=1;next} /^## /{f=0} f' "$story")"
+  if [ -z "$(printf '%s' "$plan" | tr -d '[:space:]')" ]; then
+    problems="- no '## Technical Plan' section with content"
+  else
+    scope_line="$(printf '%s\n' "$plan" | grep -m1 -v '^[[:space:]]*$')"
+    scopes="$(printf '%s' "$scope_line" | sed -n 's/^Scope:[[:space:]]*//p' | tr 'A-Z' 'a-z' | tr -s ' ,/+&|' '\n' | grep -v '^and$' | grep -v '^$' | sort -u | paste -sd ',' -)"
+    if [ -z "$scopes" ]; then
+      problems="$problems
+- the plan's first line must be 'Scope: <web | mobile | backend — one or more>', found: ${scope_line:0:80}"
+    else
+      for p in ${scopes//,/ }; do
+        case "$p" in web|mobile|backend) ;; *) problems="$problems
+- unknown scope '$p' (allowed: web, mobile, backend)" ;; esac
+      done
+    fi
+    while IFS= read -r h; do
+      printf '%s' "$h" | sed 's/^###[[:space:]]*//; s/[[:space:]]*$//' | tr 'A-Z' 'a-z' | grep -Eqx "$PLAN_SUBSECTIONS" \
+        || problems="$problems
+- subsection '$h' is not part of the layout (only ### Shared, ### Backend, ### Web, ### Mobile, ### Existing code to change)"
+    done < <(printf '%s\n' "$plan" | grep '^###')
+    # A path that already exists is a reference to an earlier story's tests; a new one outside this story's folder
+    # is the analyst planning e2e files, which story-validator owns.
+    while IFS= read -r p; do
+      case "$p" in *"tests/e2e/$slug"|*"tests/e2e/$slug/"*) continue ;; esac
+      [ -e "$p" ] && continue
+      problems="$problems
+- the plan names e2e test file '$p': story-validator owns tests/e2e/$slug/ and decides its files, titles and tags"
+    done < <(printf '%s\n' "$plan" | grep -oE '([A-Za-z0-9._-]+/)*tests/e2e/[A-Za-z0-9._/-]*[A-Za-z0-9_/-]' | sort -u)
+  fi
+  grep -q '^## Visual Definition' "$story" && visual=yes
+  if [ -n "$problems" ]; then
+    printf 'PLAN invalid (%s)%s\n' "$story" "$problems"
+    return 2
+  fi
+  echo "PLAN ok scope=$scopes visual=$visual"
+}
+
+cmd_append () {
+  require_story "${1:-}"
+  local heading="${2:-}"
+  case "$heading" in "## "*) ;; *) die "append needs a '## ' heading, got: ${heading:-<missing>}" ;; esac
+  local body; body="$(cat)"
+  [ -n "$(printf '%s' "$body" | tr -d '[:space:]')" ] || die "append: empty body on stdin"
+  # One blank line before the new section, whatever the file ended with.
+  [ -n "$(tail -c 1 "$1")" ] && printf '\n' >> "$1"
+  printf '\n%s\n\n%s\n' "$heading" "$body" >> "$1"
+  echo "APPENDED $heading"
+}
+
+print_due () {  # print_due completed|failed: the periodic duties the schedule says are due now
+  local n queued
+  n="$(ls .completed/*.md 2>/dev/null | wc -l | tr -d ' ')"
+  queued="$(ls .user-stories/*.md 2>/dev/null | wc -l | tr -d ' ')"
+  echo "COMPLETED_TOTAL $n"
+  if [ "$1" = failed ] || [ "$queued" -eq 0 ] || [ $((n % 3)) -eq 0 ]; then echo "DUE digest"; fi
+  if [ "$1" = completed ] && [ "$n" -gt 0 ] && [ $((n % 6)) -eq 0 ]; then echo "DUE refresh"; fi
 }
 
 cmd_validated () {
@@ -84,6 +170,7 @@ cmd_finish () {
     *) die "finish expects completed|failed, got: ${outcome:-<missing>}" ;;
   esac
   echo "STATUS $(cat "$STATUS")"
+  print_due "$outcome"
 }
 
 cmd_git_branch () {
@@ -119,9 +206,12 @@ cmd_git_stage () {
 
 case "${1:-}" in
   start)      cmd_start ;;
+  criteria)   cmd_criteria "${2:-}" ;;
+  plan-check) cmd_plan_check "${2:-}" ;;
+  append)     cmd_append "${2:-}" "${3:-}" ;;
   validated)  cmd_validated "${2:-}" ;;
   finish)     cmd_finish "${2:-}" "${3:-}" ;;
   git-branch) shift; cmd_git_branch "$@" ;;
   git-stage)  cmd_git_stage "${2:-}" ;;
-  *) die "usage: pm-state.sh start | validated <story> | finish completed|failed <story> | git-branch <story> <repo>... | git-stage <repo>" ;;
+  *) die "usage: pm-state.sh start | criteria <story> | plan-check <story>|--latest | append <story> '<## Heading>' | validated <story> | finish completed|failed <story> | git-branch <story> <repo>... | git-stage <repo>" ;;
 esac

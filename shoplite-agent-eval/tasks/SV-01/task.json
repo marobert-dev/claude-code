@@ -11,7 +11,7 @@
   "criteria": ["gate_tests", "functional", "scope", "protocol", "tests_quality", "a11y_i18n", "efficiency", "stability"],
   "manual_criteria": [],
   "scope": {
-    "allowed": ["tests/e2e/19-cart-page/**", ".user-stories/19-cart-page.md", ".validated-stories/**", ".decisions/**", "test-results/**", "playwright-report/**"],
+    "allowed": ["tests/e2e/19-cart-page/**", "tests/e2e/shared/**", ".user-stories/19-cart-page.md", ".validated-stories/**", ".decisions/**", "test-results/**", "playwright-report/**"],
     "forbidden": ["backend/**", "frontend/**", "contracts/openapi.yaml", "playwright.config.ts", "package.json", "tests/e2e/smoke/**", ".pipeline/conventions.md", ".claude/**"],
     "max_diff_lines": 400
   },

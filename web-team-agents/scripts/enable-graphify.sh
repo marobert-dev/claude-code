@@ -29,6 +29,7 @@ declare -A ACTIONS=(
   [dev-frontend]="changing it"
   [dev-integrator]="wiring it"
   [security-reviewer]="assessing the risks"
+  [ui-reviewer]="commenting on a screen"
   [story-validator]="validating the story"
   [unit-tester]="writing tests"
   [doc-writer]="writing docs"

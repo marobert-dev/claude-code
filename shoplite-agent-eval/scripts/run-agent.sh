@@ -6,9 +6,10 @@
 # metrics are written to <run-dir>/.eval/metrics.json and the final report to <run-dir>/.eval/agent-report.md.
 #
 # Env: EVAL_ALLOWED_TOOLS (space-separated, overrides the default list), EVAL_CLAUDE_FLAGS (extra flags,
-#      e.g. "--model sonnet"), EVAL_TIMEOUT (seconds, default 5400).
-# Tested with Claude Code 2.1.299 (`claude --help`: -p/--print, --agent, --output-format json,
-# --permission-mode acceptEdits, --allowedTools, --no-session-persistence).
+#      e.g. "--model sonnet"), EVAL_TIMEOUT (seconds, default 5400), EVAL_MCP_CONFIG (MCP servers for the run,
+#      default the kit's .mcp.json: the installed team-memory server).
+# Tested with Claude Code 2.1.310 (`claude --help`: -p/--print, --agent, --agents, --setting-sources, --mcp-config,
+# --output-format json, --permission-mode acceptEdits, --allowedTools, --no-session-persistence).
 set -euo pipefail
 # shellcheck source=lib/common.sh
 . "$(dirname "$0")/lib/common.sh"
@@ -45,15 +46,23 @@ read -r -a EXTRA <<< "${EVAL_CLAUDE_FLAGS:-}"
 
 CLAUDE_VERSION="$(claude --version 2>/dev/null | head -n1 || echo unknown)"
 AGENTS_SHA="$(git -C "$WEB_TEAM_AGENTS_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
-AGENT_FILE="$HOME/.claude/agents/$AGENT.md"
-AGENT_FILE_SHA="$( [ -f "$AGENT_FILE" ] && sha256sum "$AGENT_FILE" | cut -c1-12 || echo missing)"
-[ -f "$RUN/.claude/agents/$AGENT.md" ] && die "$RUN/.claude/agents/$AGENT.md would shadow the global agent under test"
+[ -n "$(git -C "$WEB_TEAM_AGENTS_DIR" status --porcelain -- agents 2>/dev/null)" ] && AGENTS_SHA="$AGENTS_SHA-dirty"
+AGENT_FILE="$WEB_TEAM_AGENTS_DIR/agents/$AGENT.md"
+[ -f "$AGENT_FILE" ] || die "no agent file $AGENT_FILE (set WEB_TEAM_AGENTS_DIR)"
+AGENT_FILE_SHA="$(sha256sum "$AGENT_FILE" | cut -c1-12)"
+[ -f "$RUN/.claude/agents/$AGENT.md" ] && die "$RUN/.claude/agents/$AGENT.md would shadow the agent under test"
+# The agents under test come from the repository, not from ~/.claude/agents, so a run measures what agents_sha says.
+node "$KIT/scripts/tools/agents2json.mjs" "$WEB_TEAM_AGENTS_DIR/agents" "$META/agents.json" >/dev/null \
+  || die "could not convert $WEB_TEAM_AGENTS_DIR/agents (run: npm --prefix scripts/tools install)"
 
-# Personal hooks (e.g. one that rewrites `npx …` into `wrapper npx …`) break the --allowedTools matching and must not
-# shape the agent under test. User settings stay loaded: the agents under test live in ~/.claude/agents.
+# Personal settings must not shape the agent under test: a user hook (e.g. one that rewrites `npx …` into
+# `wrapper npx …`) breaks the --allowedTools matching, and user plugins add their own hooks and tools.
+# --setting-sources project,local drops them (and ~/.claude/agents, hence --agents) but keeps the agents' frontmatter
+# hooks, which the pipeline relies on; it also drops user-scope MCP servers, hence --mcp-config.
 # The template's own permissions.allow is ignored in an untrusted run folder; DEFAULT_TOOLS already covers it.
-CMD=(claude -p "$(cat "$PROMPT_FILE")" --agent "$AGENT" --output-format json --permission-mode acceptEdits
-     --no-session-persistence --settings '{"disableAllHooks": true}' "${EXTRA[@]}" --allowedTools "${TOOLS[@]}")
+CMD=(claude -p "$(cat "$PROMPT_FILE")" --agent "$AGENT" --agents "$META/agents.json" --setting-sources project,local
+     --mcp-config "${EVAL_MCP_CONFIG:-$KIT/.mcp.json}" --output-format json --permission-mode acceptEdits
+     --no-session-persistence "${EXTRA[@]}" --allowedTools "${TOOLS[@]}")
 
 if [ "$DRY" = 1 ]; then
   printf 'cd %q\n' "$RUN"

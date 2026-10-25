@@ -11,7 +11,7 @@
   "criteria": ["gate_tests", "functional", "scope", "protocol", "contract", "security", "code_quality", "tests_quality", "a11y_i18n", "efficiency", "stability"],
   "manual_criteria": ["code_quality"],
   "scope": {
-    "allowed": ["backend/**", "frontend/src/**", "frontend/tests/**", "frontend/package.json", "frontend/package-lock.json", "contracts/openapi.yaml", "tests/e2e/01-cart-badge/**", "docs/**", ".pipeline/conventions.md", ".decisions/**"],
+    "allowed": ["backend/**", "frontend/src/**", "frontend/tests/**", "frontend/package.json", "frontend/package-lock.json", "contracts/openapi.yaml", "tests/e2e/01-cart-badge/**", "tests/e2e/shared/**", "docs/**", ".pipeline/conventions.md", ".decisions/**"],
     "forbidden": ["tests/e2e/smoke/**", ".claude/**", "playwright.config.ts"],
     "max_diff_lines": 2500
   },

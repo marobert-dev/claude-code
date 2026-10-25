@@ -3,7 +3,7 @@
   Installs the web-team-agents pipeline.
     Global (always):    copies agents\*.md into ~\.claude\agents\
     Workspace (opt-in): pass -Workspace to also install the per-project helpers
-                         (gate hook + scripts) there.
+                         (hook scripts, runners, templates) there.
 
   Usage:
     .\install.ps1                                   # global agents only
@@ -33,21 +33,25 @@ if ($Workspace) {
     Write-Host "==> Installing workspace helpers into $Workspace"
     New-Item -ItemType Directory -Force -Path (Join-Path $Workspace ".claude\hooks") | Out-Null
     New-Item -ItemType Directory -Force -Path (Join-Path $Workspace "scripts") | Out-Null
-    Copy-Item (Join-Path $ScriptDir "hooks\gate.sh") (Join-Path $Workspace ".claude\hooks\gate.sh") -Force
-    Copy-Item (Join-Path $ScriptDir "hooks\pm-state.sh") (Join-Path $Workspace ".claude\hooks\pm-state.sh") -Force
-    Copy-Item (Join-Path $ScriptDir "hooks\detect-conventions.sh") (Join-Path $Workspace ".claude\hooks\detect-conventions.sh") -Force
+    $HookScripts = @("gate.sh", "pm-state.sh", "detect-conventions.sh", "role-guard.sh", "secret-scan.sh")
+    foreach ($f in $HookScripts) {
+        Copy-Item (Join-Path $ScriptDir "hooks\$f") (Join-Path $Workspace ".claude\hooks\$f") -Force
+    }
     Copy-Item (Join-Path $ScriptDir "scripts\run-queue.sh") (Join-Path $Workspace "scripts\") -Force
     Copy-Item (Join-Path $ScriptDir "scripts\run-parallel.sh") (Join-Path $Workspace "scripts\") -Force
-    Write-Host "    Copied gate.sh, pm-state.sh, run-queue.sh, run-parallel.sh."
+    Write-Host "    Copied $($HookScripts -join ', ') to .claude\hooks\ (the agents' frontmatter hooks call gate.sh and role-guard.sh)."
+    Write-Host "    Copied run-queue.sh, run-parallel.sh to scripts\."
     $Templates = Join-Path $Workspace ".claude\templates"
     New-Item -ItemType Directory -Force -Path $Templates | Out-Null
-    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $Templates "user-manual")
-    Copy-Item (Join-Path $ScriptDir "templates\user-manual") $Templates -Recurse -Force
-    Write-Host "    Copied the user-manual template (read by doc-writer) to .claude\templates\user-manual\."
+    foreach ($t in @("user-manual", "e2e")) {
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $Templates $t)
+        Copy-Item (Join-Path $ScriptDir "templates\$t") $Templates -Recurse -Force
+    }
+    Write-Host "    Copied the user-manual template (doc-writer) and the e2e screenshot hook (story-validator) to .claude\templates\."
     Write-Host "    NOTE: these are bash scripts - run them from Git Bash or WSL, not PowerShell."
     Write-Host "    NOT auto-merged: $ScriptDir\hooks\settings.snippet.json into $Workspace\.claude\settings.json"
-    Write-Host "    Back up settings.json first, then merge that snippet by hand"
-    Write-Host "    (adds the gate hook + the team-memory MCP permission)."
+    Write-Host "    Back up settings.json first, then merge that snippet by hand (team-memory and pipeline-script permissions)."
+    Write-Host "    If an older snippet added a SubagentStop gate hook there, remove it: the dev agents now run the gate themselves."
 } else {
     Write-Host "==> No -Workspace given - skipping per-project helpers (hooks/, scripts/)."
     Write-Host "    Re-run as: .\install.ps1 -Workspace C:\path\to\your\app-repo"

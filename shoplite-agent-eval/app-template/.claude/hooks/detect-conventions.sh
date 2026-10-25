@@ -24,6 +24,10 @@ vitest:Vitest (unit)
 jest:Jest (unit)
 @testing-library/react:Testing Library (React)
 @playwright/test:Playwright (e2e)
+@axe-core/playwright:axe for Playwright (a11y checks in e2e)
+jest-axe:jest-axe (a11y checks in unit tests)
+vitest-axe:vitest-axe (a11y checks in unit tests)
+msw:MSW (API mocking)
 cypress:Cypress (e2e)
 detox:Detox (e2e, mobile)
 i18next:i18next
@@ -46,9 +50,14 @@ sass:Sass
 eslint:ESLint
 prettier:Prettier
 zod:zod
+react-hook-form:React Hook Form
+@sveltejs/kit:SvelteKit
+nuxt:Nuxt
 openapi-typescript:openapi-typescript (client types)
 @hey-api/openapi-ts:hey-api (client generation)
-orval:orval (client generation)'
+orval:orval (client generation)
+@redocly/cli:Redocly CLI (contract lint)
+@stoplight/spectral-cli:Spectral (contract lint)'
 
 DOTNET_MARKERS='Microsoft.EntityFrameworkCore.InMemory:EF Core InMemory provider (no real transactions)
 Microsoft.EntityFrameworkCore.SqlServer:EF Core SQL Server
@@ -74,23 +83,27 @@ NSubstitute:NSubstitute
 FluentAssertions:FluentAssertions
 Microsoft.AspNetCore.Mvc.Testing:WebApplicationFactory integration tests'
 
-node_deps () {  # node_deps <package.json>: dependency names, one per line
+node_deps () {  # node_deps <package.json>: "name<TAB>declared version", one dependency per line
   if [ -n "$HAS_JQ" ]; then
-    jq -r '[.dependencies, .devDependencies, .peerDependencies] | map(select(.) | keys[]) | .[]' "$1" 2>/dev/null
+    jq -r '[.dependencies, .devDependencies, .peerDependencies] | map(select(.) | to_entries[]) | .[] | "\(.key)\t\(.value)"' "$1" 2>/dev/null
   else
     # Without jq: any "name": "<version>" pair — a version starts with ^, ~, a digit, * or a known tag.
-    grep -o '"[^"]*"[[:space:]]*:[[:space:]]*"\([~^0-9*]\|latest\|next\|workspace:\|file:\|npm:\)' "$1" | cut -d'"' -f2
+    grep -o '"[^"]*"[[:space:]]*:[[:space:]]*"\([~^0-9*]\|latest\|next\|workspace:\|file:\|npm:\)[^"]*"' "$1" \
+      | sed 's/^"\([^"]*\)"[[:space:]]*:[[:space:]]*"\([^"]*\)"$/\1\t\2/'
   fi
+}
+with_versions () {  # with_versions <dir> <markers> < "name<TAB>declared": "Label <installed or declared version>" lines
+  local dir="$1" markers="$2" name declared label installed
+  while IFS="$(printf '\t')" read -r name declared; do
+    label="$(printf '%s\n' "$markers" | awk -F: -v n="$name" '$1 == n { sub(/^[^:]*:/, ""); print; exit }')"
+    [ -n "$label" ] || continue
+    installed="$(grep -m1 -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "$dir/node_modules/$name/package.json" 2>/dev/null | cut -d'"' -f4)"
+    echo "$label ${installed:-$declared}"
+  done | awk '!seen[$0]++'
 }
 npm_script () {  # npm_script <package.json> <name>: the script's command, empty when absent
   if [ -n "$HAS_JQ" ]; then jq -r --arg s "$2" '.scripts[$s] // empty' "$1" 2>/dev/null
   else sed -n '/"scripts"[[:space:]]*:/,/}/p' "$1" | grep -m1 "\"$2\"[[:space:]]*:" | sed 's/^[^:]*:[[:space:]]*"\(.*\)",\{0,1\}[[:space:]]*$/\1/'; fi
-}
-match_markers () {  # match_markers <markers> < names: "label" lines for names in the marker list
-  local names; names="$(cat)"
-  printf '%s\n' "$1" | while IFS=: read -r name label; do
-    printf '%s\n' "$names" | grep -qxF "$name" && echo "$label"
-  done | awk '!seen[$0]++'
 }
 rel () { local p="${1#./}"; echo "${p:-.}"; }
 
@@ -98,7 +111,7 @@ echo "# Detected facts (detect-conventions.sh — mechanical, verify only what l
 echo
 echo "## Repositories"
 for d in $DIRS; do
-  manifests="$(cd "$d" && ls -1 package.json *.sln *.csproj pubspec.yaml pyproject.toml go.mod pom.xml build.gradle Dockerfile 2>/dev/null | tr '\n' ' ')"
+  manifests="$(cd "$d" && ls -1 package.json *.sln *.slnx *.csproj pubspec.yaml pyproject.toml go.mod pom.xml build.gradle Dockerfile 2>/dev/null | tr '\n' ' ')"
   top="$(git -C "$d" rev-parse --show-toplevel 2>/dev/null)"
   [ -n "$manifests" ] && echo "- \`$(rel "$d")\`: ${manifests% }${top:+ (git: $(basename "$top"))}"
 done
@@ -106,16 +119,18 @@ find . -maxdepth 4 -name '*.csproj' -not -path '*/node_modules/*' -not -path '*/
   | sed 's|^\./||' | sed 's/^/- project: `/; s/$/`/'
 
 echo
-echo "## Frameworks and libraries (from declared dependencies)"
+echo "## Frameworks and libraries (from declared dependencies, with the installed version when node_modules has it)"
 for d in $DIRS; do
   [ -f "$d/package.json" ] || continue
-  libs="$(node_deps "$d/package.json" | match_markers "$NODE_MARKERS" | paste -sd ',' - | sed 's/,/, /g')"
+  libs="$(node_deps "$d/package.json" | with_versions "$d" "$NODE_MARKERS" | paste -sd ',' - | sed 's/,/, /g')"
   echo "- \`$(rel "$d")/package.json\`: ${libs:-none of the known markers}"
 done
 find . -maxdepth 4 -name '*.csproj' -not -path '*/node_modules/*' -not -path '*/bin/*' -not -path '*/obj/*' 2>/dev/null | while IFS= read -r p; do
   sdk="$(grep -o 'Sdk="[^"]*"' "$p" | head -1 | cut -d'"' -f2)"
-  tfm="$(grep -o '<TargetFramework>[^<]*' "$p" | head -1 | cut -d'>' -f2)"
-  libs="$(grep -o 'PackageReference Include="[^"]*"' "$p" | cut -d'"' -f2 | match_markers "$DOTNET_MARKERS" | paste -sd ',' - | sed 's/,/, /g')"
+  tfm="$(grep -o '<TargetFrameworks\{0,1\}>[^<]*' "$p" | head -1 | cut -d'>' -f2)"
+  libs="$(grep -o 'PackageReference Include="[^"]*"\( Version="[^"]*"\)\{0,1\}' "$p" \
+    | sed 's/PackageReference Include="\([^"]*\)"\( Version="\([^"]*\)"\)\{0,1\}/\1\t\3/' | with_versions "$(dirname "$p")" "$DOTNET_MARKERS" \
+    | sed 's/ $//' | paste -sd ',' - | sed 's/,/, /g')"
   echo "- \`${p#./}\`: ${sdk:-?} ${tfm:+($tfm)}; ${libs:-none of the known markers}"
 done
 
@@ -144,7 +159,7 @@ for d in $DIRS; do
       [ -n "$(npm_script "$pj" "$s")" ] && add_cmd "start app (for e2e)" "$dir" "npm run $s" && break
     done
   fi
-  if compgen -G "$d/*.sln" >/dev/null || compgen -G "$d/*.csproj" >/dev/null; then
+  if compgen -G "$d/*.sln" >/dev/null || compgen -G "$d/*.slnx" >/dev/null || compgen -G "$d/*.csproj" >/dev/null; then
     add_cmd build "$dir" "dotnet build --nologo -v q"
     add_cmd "unit test" "$dir" "dotnet test --nologo --no-build -v q"
   fi
@@ -178,9 +193,22 @@ ci="$(ls -1 .github/workflows/*.yml .github/workflows/*.yaml .gitlab-ci.yml azur
 echo "- CI files: ${ci:-not present}"
 
 echo
+echo "## Agent instruction files (subagents do not load them: copy the rules that constrain code changes into conventions)"
+inst="$(for d in $DIRS; do for f in CLAUDE.md AGENTS.md .github/copilot-instructions.md .cursorrules; do
+  [ -f "$d/$f" ] && printf '%s\n' "$(rel "$d")/$f"; done; done | sed 's|^\./||' | paste -sd ' ' -)"
+echo "- ${inst:-not present}"
+
+echo
 echo "## Security tooling present"
 tools=""
 for t in gitleaks semgrep osv-scanner schemathesis oasdiff; do command -v "$t" >/dev/null 2>&1 && tools="$tools $t"; done
 command -v npm >/dev/null 2>&1 && [ -f package.json -o -n "$(find . -maxdepth 2 -name package.json -not -path '*/node_modules/*' 2>/dev/null | head -1)" ] && tools="$tools npm-audit"
 command -v dotnet >/dev/null 2>&1 && tools="$tools dotnet-list-package"
+[ -f .claude/hooks/secret-scan.sh ] && tools="$tools secret-scan.sh"
 echo "-${tools:- none}"
+
+echo
+echo "## Developer tooling present"
+dev=""
+for t in typescript-language-server csharp-ls redocly spectral; do command -v "$t" >/dev/null 2>&1 && dev="$dev $t"; done
+echo "-${dev:- none} (language servers give agents diagnostics after each edit when the matching Claude Code LSP plugin is installed)"

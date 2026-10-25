@@ -2,7 +2,7 @@
 # Installs the web-team-agents pipeline.
 #   Global (always):   copies agents/*.md into ~/.claude/agents/
 #   Workspace (opt-in): pass a target workspace directory to also install the
-#                        per-project helpers (gate hook + scripts) there.
+#                        per-project helpers (hook scripts, runners, templates) there.
 #
 # Usage:
 #   bash install.sh                  # global agents only
@@ -22,21 +22,24 @@ echo "    $(ls "$SCRIPT_DIR"/agents/*.md | wc -l | tr -d ' ') agent files copied
 echo "    Restart Claude Code if $AGENTS_DIR didn't already exist before this copy —"
 echo "    a running session only picks up a brand-new agents directory after a restart."
 
+HOOK_SCRIPTS="gate.sh pm-state.sh detect-conventions.sh role-guard.sh secret-scan.sh"
+
 WORKSPACE="${1:-}"
 if [ -n "$WORKSPACE" ]; then
   echo "==> Installing workspace helpers into $WORKSPACE"
   mkdir -p "$WORKSPACE/.claude/hooks" "$WORKSPACE/scripts"
-  cp "$SCRIPT_DIR/hooks/gate.sh" "$SCRIPT_DIR/hooks/pm-state.sh" "$SCRIPT_DIR/hooks/detect-conventions.sh" "$WORKSPACE/.claude/hooks/"
+  for f in $HOOK_SCRIPTS; do cp "$SCRIPT_DIR/hooks/$f" "$WORKSPACE/.claude/hooks/"; chmod +x "$WORKSPACE/.claude/hooks/$f"; done
   cp "$SCRIPT_DIR/scripts/run-queue.sh" "$SCRIPT_DIR/scripts/run-parallel.sh" "$WORKSPACE/scripts/"
-  chmod +x "$WORKSPACE/.claude/hooks/gate.sh" "$WORKSPACE/.claude/hooks/pm-state.sh" "$WORKSPACE/.claude/hooks/detect-conventions.sh" "$WORKSPACE/scripts/run-queue.sh" "$WORKSPACE/scripts/run-parallel.sh"
-  echo "    Copied gate.sh, pm-state.sh, run-queue.sh, run-parallel.sh."
+  chmod +x "$WORKSPACE/scripts/run-queue.sh" "$WORKSPACE/scripts/run-parallel.sh"
+  echo "    Copied $HOOK_SCRIPTS to .claude/hooks/ (the agents' frontmatter hooks call gate.sh and role-guard.sh)."
+  echo "    Copied run-queue.sh, run-parallel.sh to scripts/."
   mkdir -p "$WORKSPACE/.claude/templates"
-  rm -rf "$WORKSPACE/.claude/templates/user-manual"
-  cp -R "$SCRIPT_DIR/templates/user-manual" "$WORKSPACE/.claude/templates/"
-  echo "    Copied the user-manual template (read by doc-writer) to .claude/templates/user-manual/."
+  rm -rf "$WORKSPACE/.claude/templates/user-manual" "$WORKSPACE/.claude/templates/e2e"
+  cp -R "$SCRIPT_DIR/templates/user-manual" "$SCRIPT_DIR/templates/e2e" "$WORKSPACE/.claude/templates/"
+  echo "    Copied the user-manual template (doc-writer) and the e2e screenshot hook (story-validator) to .claude/templates/."
   echo "    NOT auto-merged: $SCRIPT_DIR/hooks/settings.snippet.json into $WORKSPACE/.claude/settings.json"
-  echo "    Back up settings.json first, then merge that snippet by hand"
-  echo "    (adds the gate hook + the team-memory MCP permission)."
+  echo "    Back up settings.json first, then merge that snippet by hand (team-memory and pipeline-script permissions)."
+  echo "    If an older snippet added a SubagentStop gate hook there, remove it: the dev agents now run the gate themselves."
 else
   echo "==> No workspace directory given — skipping per-project helpers (hooks/, scripts/)."
   echo "    Re-run as: bash install.sh /path/to/your/app-repo"
