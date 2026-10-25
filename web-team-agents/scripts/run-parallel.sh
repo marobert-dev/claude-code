@@ -56,6 +56,7 @@ for f in "${READY[@]}"; do
   [ -f .pipeline/conventions.md ] && cp .pipeline/conventions.md "$wt/.pipeline/"
   [ -f .pipeline/decisions-digest.md ] && cp .pipeline/decisions-digest.md "$wt/.pipeline/"
   [ -d .claude/hooks ] && { mkdir -p "$wt/.claude/hooks"; cp -r .claude/hooks/. "$wt/.claude/hooks/"; }
+  [ -d .claude/templates ] && { mkdir -p "$wt/.claude/templates"; cp -r .claude/templates/. "$wt/.claude/templates/"; }
   [ -f .claude/settings.json ] && cp .claude/settings.json "$wt/.claude/"
   [ -d contracts ] && [ ! -d "$wt/contracts" ] && cp -r contracts "$wt/contracts"
   rm -f "$wt/.pipeline/pm-last-run.txt"

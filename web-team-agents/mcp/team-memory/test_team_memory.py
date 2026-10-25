@@ -493,6 +493,16 @@ def test_conventions_by_role_topic_and_outline(ws):
     with pytest.raises(ValueError): ws.conventions(file="../x.md")
 
 
+def test_project_rules_lead_every_role_and_ui_reviewer_gets_frontend(ws):
+    conv = ws.root / ".pipeline" / "conventions.md"
+    conv.write_text(conv.read_text(encoding="utf-8").replace(
+        "## Backend", "## Project rules\nNever edit generated clients in src/api/gen.\n\n## Backend", 1), encoding="utf-8")
+    for role in ("dev-backend", "dev-frontend", "code-reviewer", "story-validator", "unit-tester", "ui-reviewer"):
+        assert ws.conventions(role=role)["sections"][0]["heading"] == "Project rules", role
+    heads = [s["heading"] for s in ws.conventions(role="ui-reviewer")["sections"]]
+    assert "Frontend (web)" in heads and "Backend" not in heads
+
+
 def test_agent_briefing_bundles_story_context_and_role_conventions(ws):
     ws.remember("code-reviewer", "review-pattern", "Validate ids at the boundary", key="ids")
     ws.log_decision("analyst", "20-x", "id-format", "AC", "p", "c", "ids are uuids")

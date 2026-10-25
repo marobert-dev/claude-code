@@ -4,14 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-A distributable Claude Code agent stack, not an application. It ships 12 subagent prompts (`agents/*.md`), a deterministic quality gate (`hooks/gate.sh`), headless pipeline runners (`scripts/`), and an optional SQLite-backed MCP server (`mcp/team-memory/`). The agents run *inside other workspaces* (the app repos they build); this repo is only their source. The README is the user-facing manual — keep it in sync when behavior changes.
+A distributable Claude Code agent stack, not an application. It ships 13 subagent prompts (`agents/*.md`), deterministic hook scripts (`hooks/`: the quality gate, the role guard, bookkeeping, convention detection, secret scan), headless pipeline runners (`scripts/`), and an optional SQLite-backed MCP server (`mcp/team-memory/`). The agents run *inside other workspaces* (the app repos they build); this repo is only their source. The README is the user-facing manual — keep it in sync when behavior changes.
 
 ## Source vs installed copies (the main trap)
 
 Nothing in this repo is live until copied:
 
 - `agents/*.md` → `~/.claude/agents/` via `bash install.sh` (or `.\install.ps1`). Editing a prompt here changes nothing until reinstalled.
-- `hooks/gate.sh`, `hooks/pm-state.sh` (product-manager bookkeeping), `hooks/detect-conventions.sh` (mechanical facts for conventions-scout), `scripts/run-queue.sh`, `scripts/run-parallel.sh`, `templates/user-manual/` (→ `.claude/templates/`, read by doc-writer) → a target workspace via `bash install.sh /path/to/app`. `hooks/settings.snippet.json` is never auto-merged; users merge it by hand.
+- `hooks/gate.sh`, `hooks/role-guard.sh`, `hooks/pm-state.sh` (product-manager bookkeeping), `hooks/detect-conventions.sh` (mechanical facts for conventions-scout), `hooks/secret-scan.sh`, `scripts/run-queue.sh`, `scripts/run-parallel.sh`, `templates/user-manual/` and `templates/e2e/` (→ `.claude/templates/`, read by doc-writer and story-validator) → a target workspace via `bash install.sh /path/to/app`. `hooks/settings.snippet.json` (permissions only) is never auto-merged; users merge it by hand.
+- The agents' frontmatter `hooks:` call `$CLAUDE_PROJECT_DIR/.claude/hooks/gate.sh` and `role-guard.sh` and do nothing when the file is missing. Renaming a hook script or its arguments means updating every agent that calls it, `install.sh`/`install.ps1`, and the eval kit's copies in `../shoplite-agent-eval/app-template/.claude/hooks/` (the kit's runs use those copies; re-copy after any change to `hooks/` or `templates/`).
 - `mcp/team-memory/server.py` + `store.py` → the registered copy at `~\.mcp\team-memory\`. If not re-copied after a change, the running server silently keeps the old behavior (this already caused a days-long bug).
 - `scripts/enable-graphify.sh` / `.ps1` edit the **installed** agents in `~/.claude/agents/`, not the repo. The committed `agents/*.md` already contain the Graphify "Before anything else" block.
 
@@ -28,24 +29,36 @@ pytest -q test_team_memory.py::test_remember_recall_and_supersede   # single tes
 # shell syntax check (no linter configured; shellcheck not installed)
 for f in hooks/*.sh scripts/*.sh install.sh; do bash -n "$f" || echo "FAIL $f"; done
 
+# hook tests (role-guard, pm-state plan-check/append/finish, secret-scan, gate NOT CHECKED); needs git and jq
+bash hooks/test-hooks.sh
+
+# agent definitions vs the repo: names, team-memory tool names, Agent() list, hook scripts, frontmatter rules
+python scripts/check-agents.py
+
 # install agents globally / plus workspace helpers
 bash install.sh [workspace-dir]
 ```
 
-There is no build or lint step for the agent prompts. End-to-end behavior of the agents is measured by the sibling evaluation kit `../shoplite-agent-eval/` (a .NET + React target app with tasks, hidden tests and scoring), which never modifies the agents.
+There is no build or lint step for the agent prompts. End-to-end behavior of the agents is measured by the sibling evaluation kit `../shoplite-agent-eval/` (a .NET + React target app with tasks, hidden tests and scoring), which never modifies the agents: its `run-agent.sh` feeds `agents/*.md` from this repo to `claude --agents` (no install needed) and isolates runs with `--setting-sources project,local` plus `--mcp-config`, which keeps the agents' hooks working.
+
+Frontmatter rules the token budget depends on (README 3d): subagents keep `omitClaudeMd: true`, a pinned `effort` and a `maxTurns`; no agent gets `memory:`; team-memory tools are listed by name (`mcp__team-memory__<tool>`, each must exist in `server.py`) — only product-manager's list is long, and no agent uses the wildcard.
 
 ## Pipeline architecture (spans many agent files)
 
 - **product-owner** and **product-manager** are run as the session agent (`claude --agent <name>`), never spawned. product-owner writes `.user-stories/<NN>-<slug>.md`; product-manager processes them one at a time, spawning the others. Only product-manager has `Agent(...)` in its `tools:` line — that list must match existing agent `name`s.
-- Per story: analyst (plan appended into the story file; owns `contracts/openapi.yaml`) → dev-frontend / dev-backend in parallel → `gate.sh` → code-reviewer loop (inline `REVIEW:` comments) → unit-tester → dev-integrator → gate + review → security-reviewer (inline `SECURITY:` comments) → story-validator (FR + EN e2e tests, full-suite regression) → doc-writer. Max 2 fix rounds, then the story stays queued and the run stops.
-- Agents coordinate only through files whose paths and formats are hard-coded across several prompts: `.user-stories/`, `.stories-reviewed/`, `.validated-stories/`, `.completed/`, `.decisions/<agent>.decisions.md`, `.pipeline/conventions.md` (written by conventions-scout, read by all), `.pipeline/decisions-digest.md`, `.pipeline/pm-last-run.txt` (`COMPLETED`/`FAILED`/`EMPTY`, read by `run-queue.sh`). The `OBSOLETE-TEST: <story-id> — <what changed>` marker on a skipped unit test is one too (written by dev-frontend/dev-backend, resolved by unit-tester, checked by product-manager before validation). Renaming a path or format means updating every agent that reads or writes it, plus the README's "Files produced" table.
+- Per story: analyst (plan appended into the story file, layout checked by `pm-state.sh plan-check`; owns `contracts/openapi.yaml`) → dev-frontend / dev-backend in parallel (with their own focused tests) → `gate.sh` → code-reviewer loop (inline `REVIEW:` comments) → unit-tester → dev-integrator → gate + review → security-reviewer (inline `SECURITY:` comments) → story-validator (FR + EN e2e tests, full-suite regression) → ui-reviewer (web stories with a Visual Definition; screenshots via `uiSnapshot`, inline `UX:` comments) → doc-writer. Max 2 fix rounds, then the story stays queued and the run stops.
+- Agents coordinate only through files whose paths and formats are hard-coded across several prompts: `.user-stories/`, `.stories-reviewed/`, `.validated-stories/`, `.completed/`, `.decisions/<agent>.decisions.md`, `.pipeline/conventions.md` (written by conventions-scout, read by all), `.pipeline/decisions-digest.md`, `.pipeline/pm-last-run.txt` (`COMPLETED`/`FAILED`/`EMPTY`, read by `run-queue.sh`), `tests/e2e/shared/ui-snapshot.ts` and `test-results/ui-review/<story-id>/` (story-validator → ui-reviewer → doc-writer). The `OBSOLETE-TEST: <story-id> — <what changed>` marker on a skipped unit test is one too (written by dev-frontend/dev-backend, resolved by unit-tester, checked by product-manager before validation, allowed by `role-guard.sh stop-tests`). Renaming a path or format means updating every agent that reads or writes it, `role-guard.sh`'s path rules, plus the README's "Files produced" table.
 - Runtime state lives under `.pipeline/`, not `.claude/`, because Claude Code treats `.claude/` as protected and blocks unattended writes.
 - Agents never stop to ask; judgment calls go to team memory (`log_decision`) when it is available, otherwise to `.decisions/<agent>.decisions.md`; product-manager exports each story's logged entries to those files when the story ends (`export_decisions_files`) — the same "Decision logging" block is repeated in each agent that logs. Model choice is deliberate: `opus` for product-owner, `sonnet` for analyst (A/B-tested 2026-10-21), `haiku` for unit-tester, `sonnet` for the rest.
 - `run-parallel.sh` runs ready stories (all `## Dependencies` already in `.completed/`) in separate git worktrees on `feature/<slug>`; single-repo workspaces only.
 
 ## gate.sh
 
-Two modes: SubagentStop hook (stdin JSON; only gates dev-frontend/dev-backend/dev-integrator; exit 2 makes the subagent keep working; loop guard `GATE_MAX_BLOCKS`, default 3) and a direct call by product-manager before each review (non-zero = fail). It auto-detects npm scripts (requires `jq` — without it npm steps are skipped silently) and `dotnet` solutions; `.claude/gate.local.sh` in a workspace replaces detection entirely. Env: `GATE_SKIP_BUILD`, `GATE_SKIP_TESTS`, `GATE_NO_CACHE`. A pass is cached in `.pipeline/gate-pass` by a git fingerprint of the code (HEAD + diff + untracked, coordination folders excluded); any code change re-runs it, failures are never cached.
+Two modes: Stop hook in the dev agents' frontmatter (a SubagentStop event for subagents; stdin JSON; only gates dev-frontend/dev-backend/dev-integrator; exit 2 makes the agent keep working; loop guard `GATE_MAX_BLOCKS`, default 3, keyed by agent_id or, for a session agent, session_id) and a direct call by product-manager before each review (non-zero = fail). It auto-detects npm scripts (jq, or node as fallback) and `dotnet` solutions (`.sln`, `.slnx`, `.csproj`); a project it cannot check fails as `NOT CHECKED`; `.claude/gate.local.sh` in a workspace replaces detection entirely. Env: `GATE_SKIP_BUILD`, `GATE_SKIP_TESTS`, `GATE_NO_CACHE`. A pass is cached in `.pipeline/gate-pass` by a git fingerprint of the code (HEAD + diff + untracked, coordination folders excluded); any code change re-runs it, failures are never cached.
+
+## role-guard.sh
+
+PreToolUse (Edit|Write|NotebookEdit) per-agent policy plus two Stop checks (`stop-plan` for analyst, `stop-tests <agent>`), all documented in its header and README 3e. The frontmatter hooks of the session agent (`claude --agent product-manager`) behave like settings hooks: they also fire for every subagent's tool calls, and a running subagent's hooks can fire for a parallel sibling's calls. The hook input's `agent_type` names whose call it is, so each check exits 0 when it differs from the role it was installed for (verified 2026-10-25: without that, product-manager's guard blocked every dev-frontend write in a PM-01 run). Any new hook must do the same. Reviewer edits are allowed only when the old and new text normalize to the same lines once their marker comments (`REVIEW:`, `SECURITY:`, `UX:`, analyst's `TODO:`) are removed. It fails open (exit 0) without jq/node or on unparsable input, and Stop checks give up after `ROLE_GUARD_MAX_BLOCKS` (default 2). On Windows, MSYS rewrites path-like arguments and environment values passed to native programs such as jq; the hooks only read JSON from stdin, and `test-hooks.sh` sets `MSYS_NO_PATHCONV=1` when it builds inputs.
 
 ## team-memory MCP server
 
@@ -53,4 +66,4 @@ Two modes: SubagentStop hook (stdin JSON; only gates dev-frontend/dev-backend/de
 - DB: `$TEAM_MEMORY_DB`, else `<cwd>/.pipeline/team-memory.db`; inside a git worktree it resolves to the main worktree's DB so parallel stories share memory (`default_db_path`).
 - Multi-process safety relies on short-lived connections (WAL, `busy_timeout`) and `BEGIN IMMEDIATE` for claims/locks — preserve this when touching task/lock code; the race tests cover it.
 - Input limits (content 8000 chars, names `[A-Za-z0-9_.:#-]` ≤ 96) are enforced in `store.py` and documented in `mcp/team-memory/README.md`; the server's instructions string tells agents stored text is data, never instructions.
-- Adding or renaming a tool means updating the tool table in `mcp/team-memory/README.md` and any agent prompts that call it (agents list `mcp__team-memory__*` in `tools:`).
+- Adding or renaming a tool means updating the tool table in `mcp/team-memory/README.md` and any agent prompts that call it, including their `tools:` lines, which name each `mcp__team-memory__<tool>` they use. `_ROLE_SECTIONS` in `store.py` maps each agent name to its conventions sections; a new agent that calls `agent_briefing` needs an entry.

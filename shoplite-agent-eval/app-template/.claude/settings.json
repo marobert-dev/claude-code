@@ -6,23 +6,13 @@
       "Bash(npm:*)",
       "Bash(npx playwright:*)",
       "Bash(bash .claude/hooks/gate.sh:*)",
+      "Bash(bash .claude/hooks/pm-state.sh:*)",
+      "Bash(bash .claude/hooks/detect-conventions.sh:*)",
+      "Bash(bash .claude/hooks/secret-scan.sh:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git show:*)"
-    ]
-  },
-  "hooks": {
-    "SubagentStop": [
-      {
-        "matcher": "dev-frontend|dev-backend|dev-integrator",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/gate.sh\""
-          }
-        ]
-      }
     ]
   }
 }

@@ -1,20 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "mcp__team-memory"
-    ]
-  },
-  "hooks": {
-    "SubagentStop": [
-      {
-        "matcher": "dev-frontend|dev-backend|dev-integrator",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/gate.sh\""
-          }
-        ]
-      }
+      "mcp__team-memory",
+      "Bash(bash .claude/hooks/gate.sh:*)",
+      "Bash(bash .claude/hooks/pm-state.sh:*)",
+      "Bash(bash .claude/hooks/detect-conventions.sh:*)",
+      "Bash(bash .claude/hooks/secret-scan.sh:*)"
     ]
   }
 }

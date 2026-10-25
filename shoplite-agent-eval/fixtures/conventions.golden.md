@@ -1,5 +1,8 @@
 # Project conventions (auto-generated — read by all agents)
 
+## Project rules
+not present (no CLAUDE.md or AGENTS.md in the workspace)
+
 ## Repositories
 - `.` (workspace root, single git repo): Playwright e2e runner (`package.json`, `playwright.config.ts`, `tests/e2e/`), API contract `contracts/openapi.yaml`, gate `.claude/hooks/gate.sh` (+ `.claude/gate.local.sh`).
 - `backend/` — C# / ASP.NET Core Web API on .NET 10 (`ShopLite.sln`: `src/ShopLite.Api`, `tests/ShopLite.Api.Tests`).
@@ -37,7 +40,8 @@
 ## Tests
 - Unit framework(s) and how tests are laid out: backend xUnit + `WebApplicationFactory<Program>` integration tests in `backend/tests/ShopLite.Api.Tests` (`Infrastructure/ShopLiteApiFactory.cs` gives each factory its own InMemory database; helpers `CreateAuthenticatedClientAsync`, `TestUsers`); frontend Vitest + React Testing Library + user-event + jest-axe in `frontend/tests/*.test.tsx` (`tests/testUtils.tsx`: `renderApp`, `mockFetch`, `signInAs`).
 - E2E framework(s) (Playwright / Maestro / Detox / other / not present): Playwright (Chromium).
-- Where e2e tests live: `tests/e2e/<story-id>/` at the workspace root (`tests/e2e/smoke/` exists); titles start with `[<story-id>]`; parametrized by locale (`en`, `fr` via `localStorage` `shoplite.lang`).
+- Accessibility test helpers: jest-axe in frontend unit tests; @axe-core/playwright not present.
+- Where e2e tests live: `tests/e2e/<story-id>/` at the workspace root (`tests/e2e/smoke/` exists); titles start with `[<story-id>]`; parametrized by locale (`en`, `fr` via `localStorage` `shoplite.lang`). `playwright.config.ts` reads `SHOPLITE_API_PORT` (default 5080) and `SHOPLITE_WEB_PORT` (default 5173) to move both servers when a port is taken.
 
 ## Commands
 Exact commands, run from the stated directory. Write `not present` if a step doesn't exist.
@@ -55,7 +59,10 @@ Exact commands, run from the stated directory. Write `not present` if a step doe
 Full gate: `bash .claude/hooks/gate.sh` from the root (delegates to `.claude/gate.local.sh`).
 
 ## Security tooling present
-gitleaks / semgrep / osv-scanner / npm audit / dotnet list package: npm audit (npm 12) and `dotnet list package --vulnerable` (.NET 10 SDK) only; gitleaks, semgrep, osv-scanner, schemathesis and oasdiff not installed.
+gitleaks / semgrep / osv-scanner / npm audit / dotnet list package / secret-scan.sh: npm audit (npm 12), `dotnet list package --vulnerable` (.NET 10 SDK) and `.claude/hooks/secret-scan.sh`; gitleaks, semgrep, osv-scanner, schemathesis and oasdiff not installed.
+
+## Developer tooling present
+none (no language server or contract linter installed)
 
 ## Change log
 - 2026-10-14 bootstrap (golden reference written for the evaluation kit)

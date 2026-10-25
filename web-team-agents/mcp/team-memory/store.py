@@ -1067,17 +1067,20 @@ _PATH_RE = re.compile(r"^  (/.*?):\s*$")
 _METHOD_RE = re.compile(r"^    (get|put|post|delete|options|head|patch|trace):\s*$")
 _SECTION_RANK = {"schemas": 0, "parameters": 1, "requestBodies": 2, "responses": 3}
 
-# which `## ` sections of conventions.md matter to which agent (keywords matched against the heading)
+# which `## ` sections of conventions.md matter to which agent (keywords matched against the heading).
+# "project rules" comes first for everyone: agents don't load the project's CLAUDE.md/AGENTS.md, conventions-scout
+# copies the rules that constrain code changes into that short section instead.
 _ROLE_SECTIONS = {   # keyword order = priority: the budget cuts the tail, never the section a role lives in
-    "dev-backend": ("backend", "api", "test", "security", "command", "repositor", "git"),
-    "dev-frontend": ("frontend", "mobile", "i18n", "api", "test", "command", "repositor", "git"),
-    "dev-integrator": ("api", "backend", "frontend", "i18n", "command", "git", "repositor"),
-    "code-reviewer": ("backend", "frontend", "mobile", "i18n", "api", "test", "security"),
-    "security-reviewer": ("security", "api", "backend", "git"),
-    "story-validator": ("test", "api", "command"),
-    "unit-tester": ("test", "command", "backend", "frontend"),
-    "analyst": ("api", "backend", "frontend", "mobile", "i18n", "repositor"),
-    "doc-writer": ("repositor", "api", "command", "git"),
+    "dev-backend": ("project rules", "backend", "api", "test", "security", "command", "tooling", "repositor", "git"),
+    "dev-frontend": ("project rules", "frontend", "mobile", "i18n", "api", "test", "command", "tooling", "repositor", "git"),
+    "dev-integrator": ("project rules", "api", "backend", "frontend", "i18n", "command", "tooling", "git", "repositor"),
+    "code-reviewer": ("project rules", "backend", "frontend", "mobile", "i18n", "api", "test", "security"),
+    "security-reviewer": ("project rules", "security", "api", "backend", "git"),
+    "ui-reviewer": ("project rules", "frontend", "i18n", "test", "command"),
+    "story-validator": ("project rules", "test", "api", "command"),
+    "unit-tester": ("project rules", "test", "command", "backend", "frontend"),
+    "analyst": ("project rules", "api", "backend", "frontend", "mobile", "i18n", "tooling", "repositor"),
+    "doc-writer": ("project rules", "repositor", "api", "command", "git"),
 }
 _STORY_GENERIC = {"endpoint", "api", "by", "for", "of", "to", "and", "the", "a"}   # shared alone, these say nothing
 _STORY_SYNONYMS = {"update": "patch", "put": "patch", "create": "post", "list": "get", "fetch": "get",

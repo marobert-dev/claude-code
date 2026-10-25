@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 # Deterministic quality gate: lint + typecheck + build + unit tests, no LLM involved.
 # Used two ways:
-#   1. SubagentStop hook for dev-frontend / dev-backend / dev-integrator (stdin = hook JSON).
-#      Exit 2 = the subagent is told to keep working (stderr is fed back to it).
-#   2. Called by product-manager before every code-reviewer round:  bash .claude/hooks/gate.sh
+#   1. Stop hook in the frontmatter of dev-frontend / dev-backend / dev-integrator (a SubagentStop hook when they run
+#      as subagents; the same command also works from settings.json). stdin = hook JSON.
+#      Exit 2 = the agent is told to keep working (stderr is fed back to it).
+#   2. Called by product-manager before every code-reviewer round:  bash .claude/hooks/gate.sh < /dev/null
 #      Any non-zero exit = failure; stderr holds a short report to hand back to the dev agent.
 # Override everything with a project script: .claude/gate.local.sh (run instead of auto-detection).
+# A project the gate cannot check (package.json without npm, or without jq/node to read it; a .NET solution without
+# dotnet) fails as NOT CHECKED instead of passing silently.
 # A pass is remembered in .pipeline/gate-pass by a fingerprint of the code (every covered git repo:
 # HEAD, uncommitted diff, untracked files); the next call on unchanged code passes without re-running,
-# since a dev agent, the SubagentStop hook and product-manager otherwise gate the same tree back to back.
+# since a dev agent, its Stop hook and product-manager otherwise gate the same tree back to back.
 # Env: GATE_SKIP_BUILD=1 to skip builds, GATE_SKIP_TESTS=1 to skip tests, GATE_MAX_BLOCKS (default 3),
 #      GATE_NO_CACHE=1 to always re-run.
 
@@ -16,13 +19,23 @@ set -u
 ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 cd "$ROOT" || exit 0
 
+# Reads one top-level string field of the hook JSON, with jq or, without it, node.
+json_field () {
+  if command -v jq >/dev/null 2>&1; then
+    printf '%s' "$INPUT" | jq -r --arg k "$1" '.[$k] // empty' 2>/dev/null
+  elif command -v node >/dev/null 2>&1; then
+    printf '%s' "$INPUT" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{const v=JSON.parse(d)[process.argv[1]];if(v!=null)process.stdout.write(String(v))}catch(e){}})' "$1" 2>/dev/null
+  fi
+}
+
 # --- hook mode: read stdin JSON if piped ---------------------------------------------------
-AGENT_TYPE=""; AGENT_ID=""
+AGENT_TYPE=""; GUARD_ID=""
 if [ ! -t 0 ]; then
   INPUT="$(cat || true)"
-  if [ -n "$INPUT" ] && command -v jq >/dev/null 2>&1; then
-    AGENT_TYPE="$(printf '%s' "$INPUT" | jq -r '.agent_type // empty' 2>/dev/null)"
-    AGENT_ID="$(printf '%s' "$INPUT" | jq -r '.agent_id // empty' 2>/dev/null)"
+  if [ -n "$INPUT" ]; then
+    AGENT_TYPE="$(json_field agent_type)"
+    # A subagent has an agent_id; an agent run as the session itself (claude --agent) only has its session_id.
+    GUARD_ID="$(json_field agent_id)"; [ -n "$GUARD_ID" ] || GUARD_ID="$(json_field session_id)"
   fi
 fi
 if [ -n "$AGENT_TYPE" ]; then
@@ -32,14 +45,14 @@ if [ -n "$AGENT_TYPE" ]; then
   esac
 fi
 
-# --- loop guard: never block the same subagent more than N times ---------------------------
+# --- loop guard: never block the same agent more than N times ------------------------------
 MAX="${GATE_MAX_BLOCKS:-3}"
 COUNTER=""
-if [ -n "$AGENT_ID" ]; then
-  COUNTER="${TMPDIR:-/tmp}/gate-${AGENT_ID}.count"
+if [ -n "$GUARD_ID" ]; then
+  COUNTER="${TMPDIR:-/tmp}/gate-${GUARD_ID//[^A-Za-z0-9_-]/_}.count"
   N=$(cat "$COUNTER" 2>/dev/null || echo 0)
   if [ "$N" -ge "$MAX" ]; then
-    echo "gate: blocked $N times already for $AGENT_ID — letting it stop; product-manager gate will re-check." >&2
+    echo "gate: blocked $N times already for $GUARD_ID — letting it stop; product-manager gate will re-check." >&2
     exit 0
   fi
 fi
@@ -108,21 +121,39 @@ $(printf '%s' "$out" | tail -n 40)
 "
   fi
 }
+not_checked () {  # $1=dir  $2=what is missing
+  FAIL="${FAIL}--- ${1} NOT CHECKED: ${2} ---
+"
+}
 
 for d in $DIRS; do
   # Node / React / React Native
-  if [ -f "$d/package.json" ] && command -v npm >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
-    has () { jq -e --arg s "$1" '.scripts[$s] // empty' "$d/package.json" >/dev/null 2>&1; }
-    has lint      && run_step "npm lint"      "$d" npm run --silent lint
-    if has typecheck; then run_step "npm typecheck" "$d" npm run --silent typecheck
-    elif [ -f "$d/tsconfig.json" ] && [ -x "$d/node_modules/.bin/tsc" ]; then run_step "tsc --noEmit" "$d" ./node_modules/.bin/tsc --noEmit; fi
-    [ -z "${GATE_SKIP_BUILD:-}" ] && has build && run_step "npm build" "$d" npm run --silent build
-    [ -z "${GATE_SKIP_TESTS:-}" ] && has test  && run_step "npm test"  "$d" env CI=true npm test --silent
+  if [ -f "$d/package.json" ]; then
+    if ! command -v npm >/dev/null 2>&1; then
+      not_checked "$d" "npm is required to run its package.json scripts"
+    elif ! command -v jq >/dev/null 2>&1 && ! command -v node >/dev/null 2>&1; then
+      not_checked "$d" "jq or node is required to read its package.json scripts"
+    else
+      if command -v jq >/dev/null 2>&1; then
+        has () { jq -e --arg s "$1" '.scripts[$s] // empty' "$d/package.json" >/dev/null 2>&1; }
+      else
+        has () { node -e 'const p=require(require("path").resolve(process.argv[1],"package.json"));process.exit(p.scripts&&p.scripts[process.argv[2]]?0:1)' "$d" "$1" >/dev/null 2>&1; }
+      fi
+      has lint      && run_step "npm lint"      "$d" npm run --silent lint
+      if has typecheck; then run_step "npm typecheck" "$d" npm run --silent typecheck
+      elif [ -f "$d/tsconfig.json" ] && [ -x "$d/node_modules/.bin/tsc" ]; then run_step "tsc --noEmit" "$d" ./node_modules/.bin/tsc --noEmit; fi
+      [ -z "${GATE_SKIP_BUILD:-}" ] && has build && run_step "npm build" "$d" npm run --silent build
+      [ -z "${GATE_SKIP_TESTS:-}" ] && has test  && run_step "npm test"  "$d" env CI=true npm test --silent
+    fi
   fi
   # .NET (a folder may hold a .sln without any .csproj, or the reverse)
-  if command -v dotnet >/dev/null 2>&1 && { compgen -G "$d/*.sln" || compgen -G "$d/*.csproj"; } >/dev/null; then
-    run_step "dotnet build" "$d" dotnet build --nologo -v q
-    [ -z "${GATE_SKIP_TESTS:-}" ] && run_step "dotnet test" "$d" dotnet test --nologo --no-build -v q
+  if { compgen -G "$d/*.sln" || compgen -G "$d/*.slnx" || compgen -G "$d/*.csproj"; } >/dev/null; then
+    if ! command -v dotnet >/dev/null 2>&1; then
+      not_checked "$d" "dotnet is required to build and test it"
+    else
+      run_step "dotnet build" "$d" dotnet build --nologo -v q
+      [ -z "${GATE_SKIP_TESTS:-}" ] && run_step "dotnet test" "$d" dotnet test --nologo --no-build -v q
+    fi
   fi
 done
 

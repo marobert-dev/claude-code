@@ -90,6 +90,7 @@ evalkit decisions "$RUN" /dev/null > "$META/decisions-baseline.json"
 KIT_SHA="$(git -C "$KIT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 if [ -n "$(git -C "$KIT" status --porcelain -- . 2>/dev/null)" ]; then KIT_SHA="$KIT_SHA-dirty"; fi
 AGENTS_SHA="$(git -C "$WEB_TEAM_AGENTS_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+if [ -n "$(git -C "$WEB_TEAM_AGENTS_DIR" status --porcelain -- agents 2>/dev/null)" ]; then AGENTS_SHA="$AGENTS_SHA-dirty"; fi
 CLAUDE_VERSION="$(claude --version 2>/dev/null | head -n1 || echo unknown)"
 "$PYTHON" - "$META/run.json" "$TASK" "$N" "$KIT_SHA" "$AGENTS_SHA" "$CLAUDE_VERSION" <<'PY'
 import datetime, json, sys
