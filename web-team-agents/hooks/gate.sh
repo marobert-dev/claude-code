@@ -9,6 +9,8 @@
 #   2. Called by product-manager once per story, before the commit:  bash .claude/hooks/gate.sh --full < /dev/null
 #      FULL: every package, lint + typecheck + build + the project's whole test script (`npm test`, `dotnet test`).
 #      Can take many minutes: run it in the background. Any non-zero exit = failure; stderr holds a short report.
+#      A package that defines both `test:unit` and `test:e2e` scripts gets them as two separate steps (each with its
+#      own time limit and its own failure label); any other package runs `npm test`.
 # One gate at a time per repository: a second call waits for the running one and reuses its answer when the code is
 # unchanged. Every step has a time limit, and whenever the gate exits it kills the process tree it started.
 # Override everything with a project script: .claude/gate.local.sh (run instead of auto-detection; GATE_MODE says which).
@@ -19,7 +21,7 @@
 # covers a scoped call). Failures are never remembered.
 # Env: GATE_SKIP_BUILD=1 to skip builds, GATE_SKIP_TESTS=1 to skip tests, GATE_MAX_BLOCKS (default 3),
 #      GATE_NO_CACHE=1 to always re-run (no remembered pass, no reuse of another gate's answer),
-#      GATE_STEP_TIMEOUT / GATE_BUDGET / GATE_LOCK_WAIT in seconds (scoped 200 / 270 / 180, full 2700 / 3600 / 3600),
+#      GATE_STEP_TIMEOUT / GATE_BUDGET / GATE_LOCK_WAIT in seconds (scoped 200 / 270 / 180, full 1800 / 3600 / 3600),
 #      GATE_TEST_ARGS = extra arguments for the scoped jest / vitest run,
 #      GATE_SCOPED_MAX_TESTS (default 10) = most jest test files the scoped gate runs for the files that changed; a change
 #      reaching more of them (a widely imported file) runs only the test files that changed themselves, and the rest is
@@ -34,7 +36,7 @@ MODE=scoped
 for arg in "$@"; do [ "$arg" = "--full" ] && MODE=full; done
 export GATE_MODE="$MODE"
 if [ "$MODE" = full ]; then
-  STEP_TIMEOUT="${GATE_STEP_TIMEOUT:-2700}"; BUDGET="${GATE_BUDGET:-3600}"; LOCK_WAIT="${GATE_LOCK_WAIT:-3600}"
+  STEP_TIMEOUT="${GATE_STEP_TIMEOUT:-1800}"; BUDGET="${GATE_BUDGET:-3600}"; LOCK_WAIT="${GATE_LOCK_WAIT:-3600}"
 else
   STEP_TIMEOUT="${GATE_STEP_TIMEOUT:-200}";  BUDGET="${GATE_BUDGET:-270}";  LOCK_WAIT="${GATE_LOCK_WAIT:-180}"
 fi
@@ -314,7 +316,12 @@ for d in $DIRS; do
     [ -z "${GATE_SKIP_BUILD:-}" ] && has build && run_step "npm build" "$d" npm run --silent build
     if [ -z "${GATE_SKIP_TESTS:-}" ] && has test; then
       if [ "$SCOPED_DIR" = 0 ]; then
-        run_step "npm test" "$d" env CI=true npm test --silent
+        if has test:unit && has test:e2e; then
+          run_step "npm test:unit" "$d" env CI=true npm run --silent test:unit
+          run_step "npm test:e2e"  "$d" env CI=true npm run --silent test:e2e
+        else
+          run_step "npm test" "$d" env CI=true npm test --silent
+        fi
       else
         # Only the tests that import a changed file; e2e suites and the full run are left to the --full gate.
         RELATED="$(printf '%s\n' "$CHANGED" | grep -v '^tests/e2e/' || true)"
