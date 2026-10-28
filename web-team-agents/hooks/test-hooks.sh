@@ -109,6 +109,42 @@ rm -rf linked "$WS.outside"
 check "Windows-style path is understood"    2 "$(P="$(cygpath -w "$WS/contracts/openapi.yaml" 2>/dev/null || echo "$WS/contracts/openapi.yaml")" \
   jq -n '{tool_name:"Write", agent_id:"w", tool_input:{file_path:$ENV.P, content:"x"}}' | guard dev-backend)"
 
+# --- package.json: the scripts the gate runs stay as they are ---------------------------------------------------
+mkdir -p pkgguard/tests/e2e
+PKG='{
+  "name": "app",
+  "scripts": {
+    "lint": "eslint .",
+    "test": "jest"
+  },
+  "dependencies": {
+    "react": "18.3.1"
+  }
+}'
+printf '%s\n' "$PKG" > pkgguard/package.json
+printf '%s\n' "$PKG" | sed 's/$/\r/' > pkgguard/tests/e2e/package.json
+check "dev adds a dependency"                0 "$(edit_json pkgguard/package.json '"react": "18.3.1"' '"react": "18.3.1",
+    "zod": "3.23.8"' | guard dev-frontend)"
+check "dev writes package.json, same scripts" 0 "$(write_json pkgguard/package.json '{"scripts":{"test":"jest","lint":"eslint ."},"dependencies":{}}' | guard dev-backend)"
+check "dev weakens the test script"          2 "$(edit_json pkgguard/package.json '"test": "jest"' '"test": "exit 0"' | guard dev-backend)"
+check "dev removes the lint script"          2 "$(edit_json pkgguard/package.json '    "lint": "eslint .",
+' '' | guard dev-frontend)"
+check "dev adds a script"                    2 "$(edit_json pkgguard/package.json '"lint": "eslint .",' '"lint": "eslint .",
+    "test:unit": "exit 0",' | guard dev-integrator)"
+check "dev rewrites package.json with other scripts" 2 "$(write_json pkgguard/package.json '{"scripts":{"test":"exit 0"}}' | guard dev-backend)"
+check "dev changes scripts in a CRLF file"   2 "$(edit_json pkgguard/tests/e2e/package.json '"test": "jest"' '"test": "true"' | guard story-validator)"
+check "an edit that breaks the JSON"         2 "$(edit_json pkgguard/package.json '"name": "app",' '"name": "app"' | guard dev-frontend)"
+check "a new package.json is allowed"        0 "$(write_json pkgguard/new/package.json '{"scripts":{"test":"jest"}}' | guard dev-backend)"
+mkdir -p pkgguard/broken && printf '{ "scripts": ' > pkgguard/broken/package.json
+check "a package.json that is not JSON yet"  0 "$(write_json pkgguard/broken/package.json '{"scripts":{"test":"jest"}}' | guard dev-backend)"
+check "another file is not affected"         0 "$(write_json pkgguard/package-lock.json '{"lockfileVersion":3}' | guard dev-backend)"
+NO_JQ_PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v -i 'jq' | paste -sd ':' -)"
+if command -v node >/dev/null 2>&1; then
+  check "scripts check works with node, no jq" 2 "$(edit_json pkgguard/package.json '"test": "jest"' '"test": "exit 0"' \
+    | PATH="$NO_JQ_PATH" bash .claude/hooks/role-guard.sh dev-backend >/dev/null 2>&1; echo $?)"
+fi
+rm -rf pkgguard
+
 # --- Stop: test smells in the files the agent touched ------------------------------------------------------------
 smell () {  # smell <agent> <agent_id> <test file content> [path]: the agent writes the test file, then stops
   local f="${4:-frontend/tests/smell.test.ts}"
@@ -180,7 +216,6 @@ out="$(cd "$WS/gate-ws" && CLAUDE_PROJECT_DIR="$WS/gate-ws" PATH="$NO_NODE_PATH"
 check "gate fails NOT CHECKED without npm"  2 "$rc"
 check "gate names what it could not check"  1 "$(printf '%s\n' "$out" | grep -c 'NOT CHECKED')"
 if command -v node >/dev/null 2>&1; then
-  NO_JQ_PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v -i 'jq' | paste -sd ':' -)"
   check "gate reads package.json with node when jq is missing" 0 \
     "$(cd "$WS/gate-ws" && CLAUDE_PROJECT_DIR="$WS/gate-ws" PATH="$NO_JQ_PATH" GATE_NO_CACHE=1 bash "$HOOKS/gate.sh" < /dev/null >/dev/null 2>&1; echo $?)"
   check "role-guard parses with node when jq is missing" 2 \

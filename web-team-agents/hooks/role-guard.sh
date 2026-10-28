@@ -4,7 +4,8 @@
 #     Blocks a file change outside the agent's role (exit 2: Claude Code cancels the call and feeds the reason back to
 #     the agent): reviewers only add, update or remove their own single-line marker comments, analyst only TODO:
 #     comments outside the story file and the contract, every other agent only its own paths, and no agent edits
-#     .claude/ or a file outside the workspace.
+#     .claude/ or a file outside the workspace. No agent changes the "scripts" of an existing package.json: the gate
+#     runs them, so `"test": "exit 0"` would pass it. A new package.json, and dependency edits, stay allowed.
 #   Stop / SubagentStop:
 #     bash .claude/hooks/role-guard.sh stop-plan            analyst: the plan it wrote has the fixed layout (pm-state.sh plan-check)
 #     bash .claude/hooks/role-guard.sh stop-tests <agent>   the test files this agent changed gained no constant assertion,
@@ -31,7 +32,7 @@ case "$MODE" in
 esac
 
 INPUT="$(cat 2>/dev/null || true)"
-FIELDS="tool_name tool_input.file_path tool_input.notebook_path tool_input.old_string tool_input.new_string tool_input.content agent_id agent_type session_id cwd"
+FIELDS="tool_name tool_input.file_path tool_input.notebook_path tool_input.old_string tool_input.new_string tool_input.content tool_input.replace_all agent_id agent_type session_id cwd"
 
 parse_input () {  # writes each field's raw text to $W/<last path segment>
   local f names i=0 val
@@ -179,6 +180,40 @@ remember_touched () {  # the test check at Stop looks only at files this agent c
   [ -n "$key" ] && printf '%s\n' "$REL" >> "$STATE/$key.touched"
 }
 
+# --- package.json scripts ----------------------------------------------------------------------------------------
+scripts_of () {  # scripts_of <json file>: the "scripts" object with sorted keys; fails when the file is not JSON
+  if command -v jq >/dev/null 2>&1; then
+    jq -S -c '.scripts // {}' "$1" 2>/dev/null
+  else
+    node -e 'const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).scripts || {};
+      console.log(JSON.stringify(Object.fromEntries(Object.keys(s).sort().map(k => [k, s[k]]))))' "$1" 2>/dev/null
+  fi
+}
+
+plain_text () {  # plain_text <file>: without the BOM and the carriage returns, so a CRLF file still matches an edit
+  LC_ALL=C sed $'1s/^\xEF\xBB\xBF//' "$1" | tr -d '\r'
+}
+
+scripts_unchanged () {  # the change may leave "scripts" as it is, or the package.json is new or already not JSON
+  [ -f "$ABS" ] || return 0
+  shopt -u patsub_replacement 2>/dev/null
+  local before_scripts after_scripts text old new
+  plain_text "$ABS" > "$W/pkg.before"
+  before_scripts="$(scripts_of "$W/pkg.before")" || return 0
+  case "$(field tool_name)" in
+    Edit)
+      text="$(cat "$W/pkg.before")"; old="$(plain_text "$W/old_string")"; new="$(plain_text "$W/new_string")"
+      if [ "$(field replace_all)" = true ]; then text="${text//"$old"/"$new"}"; else text="${text/"$old"/"$new"}"; fi
+      printf '%s\n' "$text" > "$W/pkg.after" ;;
+    Write) plain_text "$W/content" > "$W/pkg.after" ;;
+    *) return 0 ;;
+  esac
+  after_scripts="$(scripts_of "$W/pkg.after")" \
+    || block "this change would leave $REL invalid JSON; make each edit keep it valid."
+  [ "$after_scripts" = "$before_scripts" ] \
+    || block "$REL \"scripts\" are what the gate runs (lint, typecheck, build, test); no agent changes them. Dependency edits are fine. Report the script a story needs in your reply instead."
+}
+
 pre_tool () {
   parse_input || exit 0
   not_mine && exit 0
@@ -199,6 +234,7 @@ pre_tool () {
   fi
   REL="${target:${#root}+1}"
   in_paths '.claude/*' && block ".claude/ holds the pipeline's own agents, hooks and settings; no agent edits it."
+  [ "$(printf '%s' "${REL##*/}" | tr 'A-Z' 'a-z')" = package.json ] && scripts_unchanged
 
   case "$ROLE" in
     # .decisions/ is where every agent logs its judgment calls when team memory is off.
