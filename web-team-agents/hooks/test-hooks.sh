@@ -109,13 +109,16 @@ rm -rf linked "$WS.outside"
 check "Windows-style path is understood"    2 "$(P="$(cygpath -w "$WS/contracts/openapi.yaml" 2>/dev/null || echo "$WS/contracts/openapi.yaml")" \
   jq -n '{tool_name:"Write", agent_id:"w", tool_input:{file_path:$ENV.P, content:"x"}}' | guard dev-backend)"
 
-# --- package.json: the scripts the gate runs stay as they are ---------------------------------------------------
+# --- package.json and jest.config: the scripts and test config the gate relies on stay as they are -------------------
 mkdir -p pkgguard/tests/e2e
 PKG='{
   "name": "app",
   "scripts": {
     "lint": "eslint .",
     "test": "jest"
+  },
+  "jest": {
+    "testEnvironment": "node"
   },
   "dependencies": {
     "react": "18.3.1"
@@ -125,22 +128,35 @@ printf '%s\n' "$PKG" > pkgguard/package.json
 printf '%s\n' "$PKG" | sed 's/$/\r/' > pkgguard/tests/e2e/package.json
 check "dev adds a dependency"                0 "$(edit_json pkgguard/package.json '"react": "18.3.1"' '"react": "18.3.1",
     "zod": "3.23.8"' | guard dev-frontend)"
-check "dev writes package.json, same scripts" 0 "$(write_json pkgguard/package.json '{"scripts":{"test":"jest","lint":"eslint ."},"dependencies":{}}' | guard dev-backend)"
+check "dev writes package.json, same config" 0 "$(write_json pkgguard/package.json '{"jest":{"testEnvironment":"node"},"scripts":{"test":"jest","lint":"eslint ."},"dependencies":{}}' | guard dev-backend)"
 check "dev weakens the test script"          2 "$(edit_json pkgguard/package.json '"test": "jest"' '"test": "exit 0"' | guard dev-backend)"
 check "dev removes the lint script"          2 "$(edit_json pkgguard/package.json '    "lint": "eslint .",
 ' '' | guard dev-frontend)"
 check "dev adds a script"                    2 "$(edit_json pkgguard/package.json '"lint": "eslint .",' '"lint": "eslint .",
     "test:unit": "exit 0",' | guard dev-integrator)"
-check "dev rewrites package.json with other scripts" 2 "$(write_json pkgguard/package.json '{"scripts":{"test":"exit 0"}}' | guard dev-backend)"
+check "dev rewrites package.json with other scripts" 2 "$(write_json pkgguard/package.json '{"jest":{"testEnvironment":"node"},"scripts":{"test":"exit 0"}}' | guard dev-backend)"
 check "dev changes scripts in a CRLF file"   2 "$(edit_json pkgguard/tests/e2e/package.json '"test": "jest"' '"test": "true"' | guard story-validator)"
 check "an edit that breaks the JSON"         2 "$(edit_json pkgguard/package.json '"name": "app",' '"name": "app"' | guard dev-frontend)"
+check "dev ignores tests in the jest key"    2 "$(edit_json pkgguard/package.json '"testEnvironment": "node"' '"testEnvironment": "node",
+    "testPathIgnorePatterns": ["/"]' | guard dev-backend)"
+check "dev removes the jest key"             2 "$(write_json pkgguard/package.json '{"scripts":{"test":"jest","lint":"eslint ."}}' | guard dev-backend)"
+check "dev reorders the jest keys"           0 "$(write_json pkgguard/package.json '{"jest":{"testEnvironment":"node"},"scripts":{"lint":"eslint .","test":"jest"}}' | guard dev-backend)"
 check "a new package.json is allowed"        0 "$(write_json pkgguard/new/package.json '{"scripts":{"test":"jest"}}' | guard dev-backend)"
 mkdir -p pkgguard/broken && printf '{ "scripts": ' > pkgguard/broken/package.json
 check "a package.json that is not JSON yet"  0 "$(write_json pkgguard/broken/package.json '{"scripts":{"test":"jest"}}' | guard dev-backend)"
 check "another file is not affected"         0 "$(write_json pkgguard/package-lock.json '{"lockfileVersion":3}' | guard dev-backend)"
+printf 'module.exports = { testMatch: ["**/*.test.ts"] };\n' > pkgguard/jest.config.js
+check "dev edits the jest config"            2 "$(edit_json pkgguard/jest.config.js '"**/*.test.ts"' '"**/nothing.ts"' | guard dev-backend)"
+check "dev rewrites the jest config"         2 "$(write_json pkgguard/jest.config.js 'module.exports = { testPathIgnorePatterns: ["/"] };' | guard dev-frontend)"
+check "a new jest config is allowed"         0 "$(write_json pkgguard/new/jest.config.cjs 'module.exports = {};' | guard dev-backend)"
+check "a jest setup file is not the config"  0 "$(write_json pkgguard/jest.setup.ts 'import "x";' | guard dev-frontend)"
 NO_JQ_PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v -i 'jq' | paste -sd ':' -)"
 if command -v node >/dev/null 2>&1; then
   check "scripts check works with node, no jq" 2 "$(edit_json pkgguard/package.json '"test": "jest"' '"test": "exit 0"' \
+    | PATH="$NO_JQ_PATH" bash .claude/hooks/role-guard.sh dev-backend >/dev/null 2>&1; echo $?)"
+  check "jest key check works with node, no jq" 2 "$(edit_json pkgguard/package.json '"testEnvironment": "node"' '"testEnvironment": "jsdom"' \
+    | PATH="$NO_JQ_PATH" bash .claude/hooks/role-guard.sh dev-backend >/dev/null 2>&1; echo $?)"
+  check "reordered keys pass with node, no jq" 0 "$(write_json pkgguard/package.json '{"jest":{"testEnvironment":"node"},"scripts":{"lint":"eslint .","test":"jest"}}' \
     | PATH="$NO_JQ_PATH" bash .claude/hooks/role-guard.sh dev-backend >/dev/null 2>&1; echo $?)"
 fi
 rm -rf pkgguard

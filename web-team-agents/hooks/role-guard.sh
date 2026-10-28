@@ -4,8 +4,9 @@
 #     Blocks a file change outside the agent's role (exit 2: Claude Code cancels the call and feeds the reason back to
 #     the agent): reviewers only add, update or remove their own single-line marker comments, analyst only TODO:
 #     comments outside the story file and the contract, every other agent only its own paths, and no agent edits
-#     .claude/ or a file outside the workspace. No agent changes the "scripts" of an existing package.json: the gate
-#     runs them, so `"test": "exit 0"` would pass it. A new package.json, and dependency edits, stay allowed.
+#     .claude/ or a file outside the workspace. No agent changes the "scripts" or the "jest" key of an existing
+#     package.json, nor an existing jest.config.*: the gate runs the scripts and jest picks its tests from that config,
+#     so `"test": "exit 0"` or an ignore pattern would pass it. New files and dependency edits stay allowed.
 #   Stop / SubagentStop:
 #     bash .claude/hooks/role-guard.sh stop-plan            analyst: the plan it wrote has the fixed layout (pm-state.sh plan-check)
 #     bash .claude/hooks/role-guard.sh stop-tests <agent>   the test files this agent changed gained no constant assertion,
@@ -180,13 +181,15 @@ remember_touched () {  # the test check at Stop looks only at files this agent c
   [ -n "$key" ] && printf '%s\n' "$REL" >> "$STATE/$key.touched"
 }
 
-# --- package.json scripts ----------------------------------------------------------------------------------------
-scripts_of () {  # scripts_of <json file>: the "scripts" object with sorted keys; fails when the file is not JSON
+# --- package.json scripts and jest config -------------------------------------------------------------------------
+gated_config_of () {  # gated_config_of <json file>: what the gate runs ("scripts") and how jest picks tests ("jest"), keys sorted; fails when the file is not JSON
   if command -v jq >/dev/null 2>&1; then
-    jq -S -c '.scripts // {}' "$1" 2>/dev/null
+    jq -S -c '{scripts: (.scripts // {}), jest: .jest}' "$1" 2>/dev/null
   else
-    node -e 'const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).scripts || {};
-      console.log(JSON.stringify(Object.fromEntries(Object.keys(s).sort().map(k => [k, s[k]]))))' "$1" 2>/dev/null
+    node -e 'const sorted = v => Array.isArray(v) ? v.map(sorted) : v && typeof v === "object"
+        ? Object.fromEntries(Object.keys(v).sort().map(k => [k, sorted(v[k])])) : v;
+      const p = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+      console.log(JSON.stringify(sorted({ scripts: p.scripts || {}, jest: p.jest === undefined ? null : p.jest })))' "$1" 2>/dev/null
   fi
 }
 
@@ -194,12 +197,12 @@ plain_text () {  # plain_text <file>: without the BOM and the carriage returns, 
   LC_ALL=C sed $'1s/^\xEF\xBB\xBF//' "$1" | tr -d '\r'
 }
 
-scripts_unchanged () {  # the change may leave "scripts" as it is, or the package.json is new or already not JSON
+package_config_unchanged () {  # the change may leave "scripts" and "jest" as they are, or the package.json is new or already not JSON
   [ -f "$ABS" ] || return 0
   shopt -u patsub_replacement 2>/dev/null
-  local before_scripts after_scripts text old new
+  local before_config after_config text old new
   plain_text "$ABS" > "$W/pkg.before"
-  before_scripts="$(scripts_of "$W/pkg.before")" || return 0
+  before_config="$(gated_config_of "$W/pkg.before")" || return 0
   case "$(field tool_name)" in
     Edit)
       text="$(cat "$W/pkg.before")"; old="$(plain_text "$W/old_string")"; new="$(plain_text "$W/new_string")"
@@ -208,10 +211,15 @@ scripts_unchanged () {  # the change may leave "scripts" as it is, or the packag
     Write) plain_text "$W/content" > "$W/pkg.after" ;;
     *) return 0 ;;
   esac
-  after_scripts="$(scripts_of "$W/pkg.after")" \
+  after_config="$(gated_config_of "$W/pkg.after")" \
     || block "this change would leave $REL invalid JSON; make each edit keep it valid."
-  [ "$after_scripts" = "$before_scripts" ] \
-    || block "$REL \"scripts\" are what the gate runs (lint, typecheck, build, test); no agent changes them. Dependency edits are fine. Report the script a story needs in your reply instead."
+  [ "$after_config" = "$before_config" ] \
+    || block "$REL \"scripts\" are what the gate runs (lint, typecheck, build, test) and its \"jest\" key picks the tests; no agent changes them. Dependency edits are fine. Report the script or setting a story needs in your reply instead."
+}
+
+jest_config_untouched () {  # an existing jest.config.* decides which tests run; a new one is a scaffold
+  [ -f "$ABS" ] && block "$REL is the jest config the gate's tests run with (testMatch, ignore patterns, projects); no agent changes an existing one. Report the setting a story needs in your reply instead."
+  return 0
 }
 
 pre_tool () {
@@ -234,7 +242,10 @@ pre_tool () {
   fi
   REL="${target:${#root}+1}"
   in_paths '.claude/*' && block ".claude/ holds the pipeline's own agents, hooks and settings; no agent edits it."
-  [ "$(printf '%s' "${REL##*/}" | tr 'A-Z' 'a-z')" = package.json ] && scripts_unchanged
+  case "$(printf '%s' "${REL##*/}" | tr 'A-Z' 'a-z')" in
+    package.json)  package_config_unchanged ;;
+    jest.config.*) jest_config_untouched ;;
+  esac
 
   case "$ROLE" in
     # .decisions/ is where every agent logs its judgment calls when team memory is off.
