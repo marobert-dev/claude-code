@@ -256,16 +256,18 @@ wait
 check "two simultaneous gates both pass"       "00" "$(cat "$GW2/.pipeline/rc1")$rc2"
 check "two simultaneous gates run the checks once" 1 "$(wc -c < "$GW2/.pipeline/runs.txt" | tr -d ' ')"
 
-GW3="$WS/gate4"; mkgw "$GW3" pkg-split
+GW3="$WS/gate4"; mkgw "$GW3" pkg-split pkg-chain
 cat > "$GW3/pkg-split/package.json" <<'EOF'
 {"scripts":{"test":"exit 0","test:unit":"node -e \"require('fs').writeFileSync('../.pipeline/unit.txt', 'ran')\"","test:e2e":"exit 1"}}
 EOF
+printf '{"scripts":{"test":"exit 1 && exit 0","test:unit":"exit 0","test:e2e":"exit 0"}}' > "$GW3/pkg-chain/package.json"
 commit_gw "$GW3"
 out="$(gate_in "$GW3" GATE_NO_CACHE=1 -- --full)"; rc=$?
 check "full gate fails when only test:e2e fails" 2 "$rc"
 check "full gate labels the e2e step"           1 "$(printf '%s\n' "$out" | grep -c 'npm test:e2e (pkg-split) FAILED')"
 check "full gate ran test:unit as its own step" "ran" "$(cat "$GW3/.pipeline/unit.txt" 2>/dev/null)"
 check "full gate does not also run npm test"    0 "$(printf '%s\n' "$out" | grep -c 'npm test (pkg-split)')"
+check "a chained test runs whole, not split"    "1 0" "$(printf '%s\n' "$out" | grep -c 'npm test (pkg-chain) FAILED') $(printf '%s\n' "$out" | grep -c 'npm test:unit (pkg-chain)')"
 
 # --- pm-state start: is the dev agents' stop wired to the gate? --------------------------------------------------
 WIRE="$WS/wire"; mkdir -p "$WIRE/.claude/hooks" "$WS/home/.claude/agents"

@@ -9,8 +9,9 @@
 #   2. Called by product-manager once per story, before the commit:  bash .claude/hooks/gate.sh --full < /dev/null
 #      FULL: every package, lint + typecheck + build + the project's whole test script (`npm test`, `dotnet test`).
 #      Can take many minutes: run it in the background. Any non-zero exit = failure; stderr holds a short report.
-#      A package that defines both `test:unit` and `test:e2e` scripts gets them as two separate steps (each with its
-#      own time limit and its own failure label); any other package runs `npm test`.
+#      A package that defines both `test:unit` and `test:e2e` scripts and whose `test` is a single command (the two
+#      scripts are taken to partition it) gets them as two separate steps, each with its own time limit and failure
+#      label; any other package runs `npm test` whole, so nothing a chained `test` declares is dropped.
 # One gate at a time per repository: a second call waits for the running one and reuses its answer when the code is
 # unchanged. Every step has a time limit, and whenever the gate exits it kills the process tree it started.
 # Override everything with a project script: .claude/gate.local.sh (run instead of auto-detection; GATE_MODE says which).
@@ -316,7 +317,7 @@ for d in $DIRS; do
     [ -z "${GATE_SKIP_BUILD:-}" ] && has build && run_step "npm build" "$d" npm run --silent build
     if [ -z "${GATE_SKIP_TESTS:-}" ] && has test; then
       if [ "$SCOPED_DIR" = 0 ]; then
-        if has test:unit && has test:e2e; then
+        if has test:unit && has test:e2e && ! printf '%s' "$(script_of test)" | grep -qE '&&|[|;]'; then
           run_step "npm test:unit" "$d" env CI=true npm run --silent test:unit
           run_step "npm test:e2e"  "$d" env CI=true npm run --silent test:e2e
         else
