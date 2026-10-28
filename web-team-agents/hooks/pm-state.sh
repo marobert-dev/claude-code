@@ -3,7 +3,8 @@
 # Run from the workspace root:  bash .claude/hooks/pm-state.sh <command> [args]
 #
 #   start                          Archive and print the latest handoff, list the queue in processing order,
-#                                  report whether conventions.md (present/outdated/missing) and gate.sh exist.
+#                                  report whether conventions.md (present/outdated/missing) and gate.sh exist, and
+#                                  whether the dev agents' stop is wired to it (GATE hook wired|missing|duplicated|unknown).
 #                                  Empty queue: writes EMPTY to the status file and exits 3.
 #   criteria <story-file>          Print only the story's acceptance criteria.
 #   plan-check <story-file>|--latest
@@ -34,6 +35,33 @@ slug_of () { basename "$1" .md; }
 require_story () { [ -n "${1:-}" ] && [ -f "$1" ] || die "story file not found: ${1:-<missing>}"; }
 write_status () { mkdir -p .pipeline; echo "$1" > "$STATUS"; }
 
+# Does a dev agent's stop reach gate.sh exactly once? Counts the SubagentStop hooks calling it in the settings files
+# Claude Code merges, plus a gate.sh call in the agent's own frontmatter (the old placement, a second trigger). The JSON
+# is parsed because permissions name gate.sh too, and the agents' frontmatter is cut off because their bodies do as well.
+# Prints wired, missing (some dev agent gets no gate), duplicated, or unknown (neither jq nor node to read the settings).
+gate_hook_status () {
+  local f n x file lo=99 hi=0 t declared=0 agents_dir="${CLAUDE_AGENTS_DIR:-$HOME/.claude/agents}"
+  for f in .claude/settings.json .claude/settings.local.json "$HOME/.claude/settings.json"; do
+    [ -f "$f" ] || continue
+    if command -v jq >/dev/null 2>&1; then
+      n="$(jq '[.hooks.SubagentStop[]?.hooks[]? | select((.command // "") | contains("gate.sh"))] | length' "$f" 2>/dev/null)"
+    elif command -v node >/dev/null 2>&1; then
+      n="$(node -e 'const h=(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).hooks||{}).SubagentStop||[];console.log(h.flatMap(e=>e.hooks||[]).filter(x=>(x.command||"").includes("gate.sh")).length)' "$f" 2>/dev/null)"
+    else
+      echo unknown; return
+    fi
+    declared=$(( declared + ${n:-0} ))
+  done
+  for x in dev-frontend dev-backend dev-integrator; do
+    file=".claude/agents/$x.md"; [ -f "$file" ] || file="$agents_dir/$x.md"
+    t=$declared
+    if [ -f "$file" ] && awk 'NR==1{if ($0 ~ /^---/) front=1; next} front && /^---/{exit} front' "$file" | grep -q 'hooks/gate.sh'; then t=$(( t + 1 )); fi
+    [ "$t" -lt "$lo" ] && lo=$t
+    [ "$t" -gt "$hi" ] && hi=$t
+  done
+  if [ "$lo" -eq 0 ]; then echo missing; elif [ "$hi" -gt 1 ]; then echo duplicated; else echo wired; fi
+}
+
 cmd_start () {
   local latest
   latest="$(ls -t "$HANDOFFS"/*.md 2>/dev/null | head -n 1)"
@@ -53,7 +81,7 @@ cmd_start () {
   # Written before conventions-scout copied the project's CLAUDE.md/AGENTS.md rules, which subagents no longer load.
   elif ! grep -q '^## Project rules' .pipeline/conventions.md; then echo "CONVENTIONS outdated"
   else echo "CONVENTIONS present"; fi
-  [ -f .claude/hooks/gate.sh ] && echo "GATE present" || echo "GATE missing"
+  if [ -f .claude/hooks/gate.sh ]; then echo "GATE present"; echo "GATE hook $(gate_hook_status)"; else echo "GATE missing"; fi
   if [ -z "$stories" ]; then
     write_status "EMPTY"
     echo "QUEUE empty"
@@ -192,7 +220,7 @@ COORDINATION_EXCLUDES=(
   ':(exclude).completed' ':(exclude).decisions' ':(exclude).pipeline/pm-progress.md'
   ':(exclude).pipeline/pm-last-run.txt' ':(exclude).pipeline/decisions-digest.md'
   ':(exclude,glob).pipeline/team-memory.db*' ':(exclude).pipeline/handoffs' ':(exclude).pipeline/gate-pass'
-  ':(exclude).claude/run.log'
+  ':(exclude).pipeline/gate.log' ':(exclude).claude/run.log'
 )
 
 cmd_git_stage () {
