@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Tests for the deterministic hooks: role-guard.sh, pm-state.sh (plan-check, append, finish), secret-scan.sh, gate.sh.
+# Tests for the deterministic hooks: role-guard.sh, pm-state.sh (plan-check, append, finish), secret-scan.sh, gate.sh
+# (NOT CHECKED, scoped and full modes, loop guard, time limit, one gate at a time, colors).
 # Usage (from the repo root): bash hooks/test-hooks.sh        Needs bash, git and jq; node too for the no-jq case.
 set -u
 HOOKS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -185,6 +186,117 @@ if command -v node >/dev/null 2>&1; then
   check "role-guard parses with node when jq is missing" 2 \
     "$(write_json contracts/openapi.yaml "x" | PATH="$NO_JQ_PATH" bash .claude/hooks/role-guard.sh dev-backend >/dev/null 2>&1; echo $?)"
 fi
+
+# --- gate: scoped and full modes, loop guard, time limit, one gate at a time, colors ---------------------------------
+mkgw () {  # mkgw <dir> <package>...   a git workspace whose packages each hold a package.json and an a.js; the scripts follow
+  local dir="$1"; shift
+  mkdir -p "$dir/.pipeline"; printf '.pipeline/\n' > "$dir/.gitignore"
+  for pkg in "$@"; do mkdir -p "$dir/$pkg"; echo x > "$dir/$pkg/a.js"; done
+}
+commit_gw () { ( cd "$1" && git init -q && git config user.email t@t && git config user.name t && git add -A && git commit -qm base ) >/dev/null 2>&1; }
+gate_in () {  # gate_in <dir> [VAR=value ...] -- [gate.sh args]; prints the output, exit code in $?
+  local dir="$1"; shift; local envs=()
+  while [ "${1:-}" != "--" ]; do envs+=("$1"); shift; done; shift
+  ( cd "$dir" && env CLAUDE_PROJECT_DIR="$dir" "${envs[@]}" bash "$HOOKS/gate.sh" "$@" ) < /dev/null 2>&1
+}
+
+GW="$WS/gate2"; mkgw "$GW" pkg-ok pkg-bad
+printf '{"scripts":{"lint":"exit 0"}}' > "$GW/pkg-ok/package.json"
+printf '{"scripts":{"lint":"exit 1"}}' > "$GW/pkg-bad/package.json"
+commit_gw "$GW"
+out="$(gate_in "$GW" GATE_NO_CACHE=1 --)"; rc=$?
+check "scoped gate passes with nothing changed" 0 "$rc"
+check "scoped gate says no package changed"     1 "$(printf '%s\n' "$out" | grep -c 'no changed package')"
+echo y >> "$GW/pkg-ok/a.js"
+gate_in "$GW" GATE_NO_CACHE=1 -- >/dev/null; check "scoped gate skips an untouched package that would fail" 0 "$?"
+out="$(gate_in "$GW" GATE_NO_CACHE=1 -- --full)"; rc=$?
+check "full gate checks every package"         2 "$rc"
+check "full gate names the failing step"       1 "$(printf '%s\n' "$out" | grep -c 'npm lint (pkg-bad) FAILED')"
+echo y >> "$GW/pkg-bad/a.js"
+out="$(gate_in "$GW" GATE_NO_CACHE=1 --)"; rc=$?
+check "scoped gate fails a changed package"    2 "$rc"
+check "scoped gate names the failing step"     1 "$(printf '%s\n' "$out" | grep -c 'npm lint (pkg-bad) FAILED')"
+check "gate output carries no color codes"     0 "$(printf '%s\n' "$out" | grep -c "$(printf '\033')")"
+loop () { printf '{"agent_type":"dev-backend","agent_id":"loop-1"}' | ( cd "$GW" && CLAUDE_PROJECT_DIR="$GW" GATE_NO_CACHE=1 GATE_MAX_BLOCKS=1 bash "$HOOKS/gate.sh" ) >/dev/null 2>&1; echo $?; }
+check "gate blocks a dev agent once"           2 "$(loop)"
+check "gate then lets the loop guard release it" 0 "$(loop)"
+
+NG="$(TMPDIR=/tmp mktemp -d)"; mkdir -p "$NG/pkg-bad"; printf '{"scripts":{"lint":"exit 1"}}' > "$NG/pkg-bad/package.json"
+if ! git -C "$NG" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  gate_in "$NG" GATE_NO_CACHE=1 -- >/dev/null; check "scoped gate checks a package outside git whole" 2 "$?"
+fi
+rm -rf "$NG"
+
+GW2="$WS/gate3"; mkgw "$GW2" pkg-slow pkg-env pkg-conc
+cat > "$GW2/pkg-slow/package.json" <<'EOF'
+{"scripts":{"lint":"node -e \"setInterval(() => {}, 1000)\""}}
+EOF
+cat > "$GW2/pkg-env/package.json" <<'EOF'
+{"scripts":{"lint":"node -e \"require('fs').writeFileSync('../.pipeline/env.txt', process.env.NO_COLOR + process.env.FORCE_COLOR)\""}}
+EOF
+cat > "$GW2/pkg-conc/package.json" <<'EOF'
+{"scripts":{"lint":"node -e \"require('fs').appendFileSync('../.pipeline/runs.txt', 'x'); setTimeout(() => {}, 4000)\""}}
+EOF
+commit_gw "$GW2"
+echo y >> "$GW2/pkg-slow/a.js"; SECONDS=0
+out="$(gate_in "$GW2" GATE_NO_CACHE=1 GATE_STEP_TIMEOUT=3 --)"; rc=$?
+check "gate fails a step that outlasts its time limit" 2 "$rc"
+check "gate reports the timed-out step"        1 "$(printf '%s\n' "$out" | grep -c 'TIMED OUT after 3s')"
+check "gate returns soon after the time limit" 1 "$([ "$SECONDS" -lt 30 ] && echo 1 || echo 0)"
+( cd "$GW2" && git checkout -q -- . )
+echo y >> "$GW2/pkg-env/a.js"
+gate_in "$GW2" GATE_NO_CACHE=1 FORCE_COLOR=1 -- >/dev/null
+check "steps run with NO_COLOR=1 FORCE_COLOR=0 even if the caller forces colors" "10" "$(cat "$GW2/.pipeline/env.txt" 2>/dev/null)"
+( cd "$GW2" && git checkout -q -- . )
+echo y >> "$GW2/pkg-conc/a.js"; rm -f "$GW2/.pipeline/runs.txt" "$GW2/.pipeline/rc1"
+( gate_in "$GW2" -- >/dev/null; echo $? > "$GW2/.pipeline/rc1" ) &
+sleep 1
+gate_in "$GW2" -- >/dev/null; rc2=$?
+wait
+check "two simultaneous gates both pass"       "00" "$(cat "$GW2/.pipeline/rc1")$rc2"
+check "two simultaneous gates run the checks once" 1 "$(wc -c < "$GW2/.pipeline/runs.txt" | tr -d ' ')"
+
+GW3="$WS/gate4"; mkgw "$GW3" pkg-split pkg-chain
+cat > "$GW3/pkg-split/package.json" <<'EOF'
+{"scripts":{"test":"exit 0","test:unit":"node -e \"require('fs').writeFileSync('../.pipeline/unit.txt', 'ran')\"","test:e2e":"exit 1"}}
+EOF
+printf '{"scripts":{"test":"exit 1 && exit 0","test:unit":"exit 0","test:e2e":"exit 0"}}' > "$GW3/pkg-chain/package.json"
+commit_gw "$GW3"
+out="$(gate_in "$GW3" GATE_NO_CACHE=1 -- --full)"; rc=$?
+check "full gate fails when only test:e2e fails" 2 "$rc"
+check "full gate labels the e2e step"           1 "$(printf '%s\n' "$out" | grep -c 'npm test:e2e (pkg-split) FAILED')"
+check "full gate ran test:unit as its own step" "ran" "$(cat "$GW3/.pipeline/unit.txt" 2>/dev/null)"
+check "full gate does not also run npm test"    0 "$(printf '%s\n' "$out" | grep -c 'npm test (pkg-split)')"
+check "a chained test runs whole, not split"    "1 0" "$(printf '%s\n' "$out" | grep -c 'npm test (pkg-chain) FAILED') $(printf '%s\n' "$out" | grep -c 'npm test:unit (pkg-chain)')"
+
+# --- pm-state start: is the dev agents' stop wired to the gate? --------------------------------------------------
+WIRE="$WS/wire"; mkdir -p "$WIRE/.claude/hooks" "$WS/home/.claude/agents"
+touch "$WIRE/.claude/hooks/gate.sh"
+wire () {  # wire [VAR=value ...]   pm-state start in $WIRE with an empty home, so the real user settings and agents never count
+  ( cd "$WIRE" && env HOME="$WS/home" CLAUDE_AGENTS_DIR="$WS/home/.claude/agents" "$@" bash "$HOOKS/pm-state.sh" start ) 2>/dev/null
+}
+GATE_HOOK='{"hooks":{"SubagentStop":[{"matcher":"dev-frontend|dev-backend|dev-integrator","hooks":[{"type":"command","command":"bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/gate.sh\""}]}]}}'
+printf '{"permissions":{"allow":["Bash(bash .claude/hooks/gate.sh:*)"]}}' > "$WIRE/.claude/settings.json"
+check "permissions naming gate.sh are not a hook"     1 "$(wire | grep -c '^GATE hook missing')"
+printf '%s' "$GATE_HOOK" > "$WIRE/.claude/settings.json"
+check "one SubagentStop gate hook is wired"           1 "$(wire | grep -c '^GATE hook wired')"
+printf '%s' "$GATE_HOOK" > "$WIRE/.claude/settings.local.json"
+check "the same hook in settings.local.json doubles it" 1 "$(wire | grep -c '^GATE hook duplicated')"
+rm -f "$WIRE/.claude/settings.local.json"
+printf -- '---\nname: dev-backend\nhooks:\n  Stop:\n    - hooks:\n        - type: command\n          command: role-guard.sh\n---\nDo not run `.claude/hooks/gate.sh` yourself.\n' > "$WS/home/.claude/agents/dev-backend.md"
+check "gate.sh named in an agent's body is not a trigger" 1 "$(wire | grep -c '^GATE hook wired')"
+printf -- '---\nname: dev-backend\nhooks:\n  Stop:\n    - hooks:\n        - type: command\n          command: bash "$CLAUDE_PROJECT_DIR/.claude/hooks/gate.sh"\n---\nbody\n' > "$WS/home/.claude/agents/dev-backend.md"
+check "gate.sh in an agent's frontmatter doubles it"  1 "$(wire | grep -c '^GATE hook duplicated')"
+rm -f "$WS/home/.claude/agents/dev-backend.md"
+printf '{}' > "$WIRE/.claude/settings.json"
+check "an agent with no gate trigger is reported"     1 "$(wire | grep -c '^GATE hook missing')"
+printf '%s' "$GATE_HOOK" > "$WIRE/.claude/settings.json"
+check "without jq and node the wiring is unknown"     1 "$(wire PATH="$NO_NODE_PATH" | grep -c '^GATE hook unknown')"
+if command -v node >/dev/null 2>&1; then
+  check "the wiring is read with node when jq is missing" 1 "$(wire PATH="$NO_JQ_PATH" | grep -c '^GATE hook wired')"
+fi
+rm -f "$WIRE/.claude/hooks/gate.sh"
+check "no gate.sh: no hook line, only GATE missing"   "1 0" "$(wire | grep -c '^GATE missing') $(wire | grep -c '^GATE hook')"
 
 echo "hooks tests: $PASS passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]

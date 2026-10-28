@@ -140,8 +140,13 @@ réussite/échec et le périmètre. La notation est décrite dans `docs/scoring-
   (jusqu'à `8c501af`) utilisaient `disableAllHooks`, qui coupait aussi les hooks des agents.
 - **Gate** : `.claude/hooks/gate.sh` est la copie exacte de `web-team-agents/hooks/gate.sh`. Le template fournit
   aussi `.claude/gate.local.sh` (historique : l'ancienne détection .NET ignorait un dossier contenant un `.sln` sans
-  `.csproj`). Les agents de développement lancent le gate eux-mêmes (hook `Stop` de leur frontmatter), en session
-  comme en sous-agent ; `check-run.sh` l'exécute de toute façon après le run.
+  `.csproj`) ; ce script ignore le mode ciblé et vérifie tout. Le gate des agents de développement est déclaré **une
+  seule fois**, dans le `.claude/settings.json` du template (hook `SubagentStop`, copie de `settings.snippet.json`, plus
+  un hook `Stop` identique pour les tâches qui lancent l'agent comme agent de session, `--agent`, où `SubagentStop` ne
+  se déclenche pas ; `gate.sh` ignore les agents autres que les trois agents de développement) : les agents n'en portent
+  plus dans leur frontmatter, sinon il se déclencherait deux fois à chaque arrêt. Les runs
+  créés avant ce changement n'ont pas ce hook : recréez-les avec `new-run.sh --force`. `check-run.sh` exécute
+  `gate.sh --full` après le run.
 - **Budgets d'efficacité** : seuils initiaux à recalibrer après une première campagne.
 
 

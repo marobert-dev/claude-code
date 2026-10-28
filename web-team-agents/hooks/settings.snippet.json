@@ -7,5 +7,19 @@
       "Bash(bash .claude/hooks/detect-conventions.sh:*)",
       "Bash(bash .claude/hooks/secret-scan.sh:*)"
     ]
+  },
+  "hooks": {
+    "SubagentStop": [
+      {
+        "matcher": "dev-frontend|dev-backend|dev-integrator",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/gate.sh\"",
+            "timeout": 480
+          }
+        ]
+      }
+    ]
   }
 }

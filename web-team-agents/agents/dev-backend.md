@@ -15,9 +15,6 @@ hooks:
   Stop:
     - hooks:
         - type: command
-          command: 'h="${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/gate.sh"; [ ! -f "$h" ] || bash "$h"'
-          timeout: 900
-        - type: command
           command: 'h="${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/role-guard.sh"; [ ! -f "$h" ] || bash "$h" stop-tests dev-backend'
 ---
 
@@ -51,8 +48,8 @@ You own everything that runs server-side for this story: endpoints/controllers, 
 12. Never hardcode secrets, connection strings, or environment-specific values — use the project's configuration/secrets mechanism.
 13. Contract check: if the project can emit its OpenAPI spec (see conventions, `## API contract`), emit it and diff it against `contracts/openapi.yaml` for the operations you touched; fix your code until they match. If the contract is plainly unimplementable or wrong, implement the closest sensible behavior, report it as a contract defect, and log the decision.
 14. Tests for what you change: add or update the smallest set of tests that pins the behavior this story adds or changes, in the project's test setup (conventions `## Tests`; e.g. a `WebApplicationFactory` host for endpoints): each new or changed endpoint's success path and every refusal the contract lists (400, 401/403, 404 for another user's resource, 409), the rules of each new service, and for a bug fix a test that fails without the fix. unit-tester extends coverage after review — don't duplicate its job.
-15. When the `LSP` tool is available, use it for definitions and references instead of text search, and fix the diagnostics reported after each edit before running the gate.
-16. Before reporting, run `bash .claude/hooks/gate.sh < /dev/null` from the workspace root — lint, typecheck, build and unit tests, output trimmed to the failures — and fix whatever fails; the same gate runs again when you finish and sends failures back to you. Only if that script doesn't exist, run the lint, typecheck and build commands from `.pipeline/conventions.md`, `## Commands`.
+15. When the `LSP` tool is available, use it for definitions and references instead of text search, and fix the diagnostics reported after each edit before you finish.
+16. Before reporting, re-run only the test files you wrote or changed (one file at a time, never the whole suite) and fix whatever fails. The project's quality gate — lint, typecheck, build and the tests related to your changes — runs by itself when you finish (a SubagentStop hook in `.claude/settings.json`) and sends failures back to you: do not run `gate.sh` yourself. Only if `.claude/hooks/gate.sh` doesn't exist, run the lint, typecheck and build commands from `.pipeline/conventions.md`, `## Commands`.
 
 ## Testing loop
 
@@ -60,7 +57,7 @@ Command output: run tests, builds and e2e suites with the quietest reporter that
 
 Whenever your change touches code with existing unit tests:
 
-1. Run them through the gate (`bash .claude/hooks/gate.sh < /dev/null`, as in Implementation); while fixing a failure, re-run only the failing test file, not the whole suite.
+1. Run only the test files you wrote or changed, with the test command from `.pipeline/conventions.md`; while fixing a failure, re-run only the failing test file, not the whole suite.
 2. If they pass, continue.
 3. If they fail, determine whether the story intentionally changed the behavior the test asserts — its failure reflects outdated expectations, not a bug — or whether your code is wrong. If your code is wrong, fix it. If the behavior changed on purpose, park the test instead of editing it: disable only that test case with the framework's own skip (`it.skip(...)`, `[Fact(Skip = "...")]`) and put `OBSOLETE-TEST: <story-id> — <what changed, and what the test still wrongly asserts>` in the skip reason or in a comment on the line just above the skip. `unit-tester` then rewrites or removes it; never delete, loosen or skip a test for any other reason, and never leave it failing or hand it to another agent through the task board. List each parked test in your report.
 4. If you attempted a fix and it still fails, retry up to 3 more times.
@@ -95,7 +92,7 @@ Decision: <the option taken, and why>
 
 ## Handoff
 
-- Definition of done: the last gate run before your report (`bash .claude/hooks/gate.sh < /dev/null`) exited 0. If it still fails after your retries, say so on the report's first line as broken code, with the failing step — never describe failing tests as missing or unrelated. A test parked as `OBSOLETE-TEST` (Testing loop step 3) does not count as failing.
+- Definition of done: the test files you wrote or changed pass when run alone, and the quality gate that runs when you finish lets you stop. If it still blocks you after your retries, say so on the report's first line as broken code, with the failing step — never describe failing tests as missing or unrelated. A test parked as `OBSOLETE-TEST` (Testing loop step 3) does not count as failing.
 - Report completion to whoever invoked you in at most 15 lines (paths and facts, no narrative, no code), including: files created/modified, the tests you added (`Tests: <files> — <behaviors>`), the final contract for any new or changed endpoint (operationIds and status codes, not full schemas), any new dependency added and why, any deviation from the plan and why, any parked or open `TODO`s, and any convention gaps you found. Whoever invoked you handles getting your changes reviewed and, once clean, getting coverage extended by `unit-tester` — you don't call either yourself.
 
 All documents you produce must be Markdown only.

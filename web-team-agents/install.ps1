@@ -39,7 +39,7 @@ if ($Workspace) {
     }
     Copy-Item (Join-Path $ScriptDir "scripts\run-queue.sh") (Join-Path $Workspace "scripts\") -Force
     Copy-Item (Join-Path $ScriptDir "scripts\run-parallel.sh") (Join-Path $Workspace "scripts\") -Force
-    Write-Host "    Copied $($HookScripts -join ', ') to .claude\hooks\ (the agents' frontmatter hooks call gate.sh and role-guard.sh)."
+    Write-Host "    Copied $($HookScripts -join ', ') to .claude\hooks\ (the agents' frontmatter hooks call role-guard.sh; the gate runs from the SubagentStop hook in settings.json)."
     Write-Host "    Copied run-queue.sh, run-parallel.sh to scripts\."
     $Templates = Join-Path $Workspace ".claude\templates"
     New-Item -ItemType Directory -Force -Path $Templates | Out-Null
@@ -50,8 +50,9 @@ if ($Workspace) {
     Write-Host "    Copied the user-manual template (doc-writer) and the e2e screenshot hook (story-validator) to .claude\templates\."
     Write-Host "    NOTE: these are bash scripts - run them from Git Bash or WSL, not PowerShell."
     Write-Host "    NOT auto-merged: $ScriptDir\hooks\settings.snippet.json into $Workspace\.claude\settings.json"
-    Write-Host "    Back up settings.json first, then merge that snippet by hand (team-memory and pipeline-script permissions)."
-    Write-Host "    If an older snippet added a SubagentStop gate hook there, remove it: the dev agents now run the gate themselves."
+    Write-Host "    Back up settings.json first, then merge that snippet by hand: the team-memory and pipeline-script permissions,"
+    Write-Host "    and the SubagentStop hook that runs gate.sh when a dev agent stops. The dev agents no longer carry that hook"
+    Write-Host "    themselves, so without it they finish with no gate; keep exactly one copy, a second would run the gate twice."
 } else {
     Write-Host "==> No -Workspace given - skipping per-project helpers (hooks/, scripts/)."
     Write-Host "    Re-run as: .\install.ps1 -Workspace C:\path\to\your\app-repo"

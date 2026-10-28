@@ -15,9 +15,6 @@ hooks:
   Stop:
     - hooks:
         - type: command
-          command: 'h="${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/gate.sh"; [ ! -f "$h" ] || bash "$h"'
-          timeout: 900
-        - type: command
           command: 'h="${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/role-guard.sh"; [ ! -f "$h" ] || bash "$h" stop-tests dev-integrator'
 ---
 
@@ -51,7 +48,7 @@ Command output: run tests, builds and e2e suites with the quietest reporter that
 
 1. Verify the story works end-to-end, frontend to backend, for the success path and for at least one failure path (e.g. a validation error or a simulated network failure) to confirm the wiring in step 4 actually works, not just the happy path. Start the backend the way conventions say (in the background, output to a log file), wait until it answers, exercise each operation the plan references with `curl` (success and one refusal, with auth when required), and stop it afterwards. An e2e test that fails leaves `test-results/<test>/error-context.md` (the error and an accessibility snapshot of the page): read that before anything else. Then run the contract check once: the project's own contract tests if conventions name any; otherwise, if `schemathesis` is installed, `schemathesis run contracts/openapi.yaml --base-url <local backend URL> --checks all` restricted to the plan's operations with its operation-id filter (`schemathesis run --help | grep -i operation-id` gives the flag for the installed version; add auth headers when the API requires them). Fix what it finds at the seam, then re-run only the failing operations. Say in your report which of these you could not run, and why.
 2. Re-run any unit or integration tests touched by your changes; if something breaks, fix it if the fix belongs at the seam, or report it clearly if it belongs to dev-frontend or dev-backend. When your wiring changes behavior an existing unit test pins on purpose, park the test as the dev agents do (framework skip plus `OBSOLETE-TEST: <story-id> — <what changed>`); never leave it failing.
-3. Before reporting, run `bash .claude/hooks/gate.sh < /dev/null` from the workspace root — lint, typecheck, build and unit tests, with output already trimmed to the failures — and fix whatever fails; the same gate runs again when you finish and sends failures back to you. Only if that script doesn't exist, run the lint, typecheck and build commands from `.pipeline/conventions.md`, `## Commands`.
+3. Before reporting, re-run only the test files that cover the seam you wired (one file at a time, never the whole suite) and fix whatever fails. The project's quality gate — lint, typecheck, build and the tests related to your changes — runs by itself when you finish (a SubagentStop hook in `.claude/settings.json`) and sends failures back to you: do not run `gate.sh` yourself. Only if `.claude/hooks/gate.sh` doesn't exist, run the lint, typecheck and build commands from `.pipeline/conventions.md`, `## Commands`.
 4. If a seam issue resists your fixes after 3 attempts, stop guessing: leave a `TODO` describing exactly where it breaks and what you tried, and report to whoever invoked you that integration is blocked. Do not silently ship a half-working integration.
 
 ## Code review
@@ -83,7 +80,7 @@ Decision: <the option taken, and why>
 
 ## Handoff
 
-- Definition of done: the last gate run before your report (`bash .claude/hooks/gate.sh < /dev/null`) exited 0. If it still fails after your retries, say so on the report's first line as broken code, with the failing step — never describe failing tests as missing or unrelated.
+- Definition of done: the tests covering the seam you wired pass when run alone, and the quality gate that runs when you finish lets you stop. If it still blocks you after your retries, say so on the report's first line as broken code, with the failing step — never describe failing tests as missing or unrelated.
 - Report the integration result to whoever invoked you in at most 15 lines (paths and facts, no narrative, no code), including: any contract mismatch found and how it was resolved, which failure paths you verified (and what you could not run), and the list of files you changed (needed for the review step above).
 
 All documents you produce must be Markdown only.

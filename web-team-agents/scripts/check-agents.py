@@ -7,12 +7,15 @@
   except product-manager (the wildcard loads every tool schema into each call);
 - product-manager's Agent(...) list names existing agents;
 - every .claude/hooks/<script> a hook calls ships in hooks/;
+- no agent calls gate.sh from its frontmatter: hooks/settings.snippet.json declares the one SubagentStop gate hook
+  (matcher = the three dev agents), and a second trigger would run the gate twice after every stop;
 - no memory: field (team-memory is the shared memory), subagents keep omitClaudeMd, effort and maxTurns;
 - no "---" line in a body (scripts/enable-graphify.sh inserts after the last one).
 When PyYAML is importable the frontmatter is also parsed as YAML.
 """
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -75,8 +78,18 @@ def main() -> int:
         for script in set(re.findall(r"\.claude/hooks/([\w.-]+\.sh)", front)):
             if not (ROOT / "hooks" / script).is_file():
                 bad(f"a hook calls .claude/hooks/{script}, which hooks/ does not ship")
+        if "gate.sh" in front:
+            bad("calls gate.sh from its frontmatter (hooks/settings.snippet.json holds the only gate trigger)")
         if re.search(r"^---\s*$", body, re.M):
             bad("the body contains a '---' line (enable-graphify inserts its block after the last one)")
+
+    snippet = json.loads((ROOT / "hooks" / "settings.snippet.json").read_text(encoding="utf-8"))
+    gate_hooks = [entry for entry in snippet.get("hooks", {}).get("SubagentStop", [])
+                  if any("gate.sh" in h.get("command", "") for h in entry.get("hooks", []))]
+    if len(gate_hooks) != 1:
+        problems.append(f"settings.snippet.json: expected one SubagentStop gate hook, found {len(gate_hooks)}")
+    elif set(gate_hooks[0].get("matcher", "").split("|")) != {"dev-frontend", "dev-backend", "dev-integrator"}:
+        problems.append("settings.snippet.json: the gate hook's matcher must be dev-frontend|dev-backend|dev-integrator")
 
     for p in problems:
         print("FAIL", p)

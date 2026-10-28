@@ -3,7 +3,7 @@
 #
 # Order matters: everything about the agent's own work is measured BEFORE hidden tests are copied in.
 #   1. diff since eval-start (agent's changes) and since eval-base, coordination files, .decisions entries, markers
-#   2. the deterministic gate (bash .claude/hooks/gate.sh)
+#   2. the deterministic gate (bash .claude/hooks/gate.sh --full)
 #   3. hidden tests copied in and run (backend xUnit project, frontend Vitest, Playwright), one run per suite
 #   4. standard checks (gate, role prohibitions, scope, tests not weakened, diff size, Memory: line)
 #   5. tasks/<TASK-ID>/check.sh adds task-specific checks
@@ -46,7 +46,7 @@ evalkit decisions "$RUN" "$META/decisions-baseline.json" > "$EVAL/decisions.json
 # ---- 2. gate -------------------------------------------------------------------------------------------
 if [ -z "${EVAL_SKIP_GATE:-}" ]; then
   info "running the gate"
-  ( cd "$RUN" && GATE_NO_CACHE=1 bash .claude/hooks/gate.sh < /dev/null ) > "$EVAL/gate.log" 2>&1
+  ( cd "$RUN" && GATE_NO_CACHE=1 bash .claude/hooks/gate.sh --full < /dev/null ) > "$EVAL/gate.log" 2>&1
   GATE_RC=$?
 else
   GATE_RC=99; echo "skipped (EVAL_SKIP_GATE)" > "$EVAL/gate.log"
@@ -85,7 +85,7 @@ fi
 # ---- 4. standard checks --------------------------------------------------------------------------------
 # shellcheck source=lib/check-lib.sh
 . "$KIT/scripts/lib/check-lib.sh"
-check_blocking std-gate gate_tests "Gate green at the end of the run (bash .claude/hooks/gate.sh)" -- gate_green
+check_blocking std-gate gate_tests "Gate green at the end of the run (bash .claude/hooks/gate.sh --full)" -- gate_green
 check_blocking std-role protocol "No role prohibition violated (forbidden paths untouched)" -- no_forbidden_paths
 check_blocking std-tests protocol "No test deleted, skipped or reduced" -- tests_not_weakened
 check std-scope scope "Every changed file is inside the task's allowed paths" -- no_out_of_scope
