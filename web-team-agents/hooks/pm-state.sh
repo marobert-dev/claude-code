@@ -82,6 +82,8 @@ cmd_start () {
   elif ! grep -q '^## Project rules' .pipeline/conventions.md; then echo "CONVENTIONS outdated"
   else echo "CONVENTIONS present"; fi
   if [ -f .claude/hooks/gate.sh ]; then echo "GATE present"; echo "GATE hook $(gate_hook_status)"; else echo "GATE missing"; fi
+  # Test, lint and type-check settings already modified now become the baseline the gate compares against.
+  [ -f .claude/hooks/role-guard.sh ] && { bash .claude/hooks/role-guard.sh protected-snapshot < /dev/null 2>/dev/null || true; }
   if [ -z "$stories" ]; then
     write_status "EMPTY"
     echo "QUEUE empty"

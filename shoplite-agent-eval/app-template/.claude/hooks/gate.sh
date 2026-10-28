@@ -27,9 +27,14 @@
 #      GATE_SCOPED_MAX_TESTS (default 10) = most jest test files the scoped gate runs for the files that changed; a change
 #      reaching more of them (a widely imported file) runs only the test files that changed themselves, and the rest is
 #      left to the --full gate instead of running past the time budget. Unit tests of .NET projects run in --full only.
-# Journal: .pipeline/gate.log, one line per start / wait / reuse / cached / end, with the process id.
+#      GATE_NO_PROTECTED_CHECK=1 to skip the protected-settings check below.
+# Protected settings: when role-guard.sh sits next to this script, every call first fails (exit 2, nothing else runs) if a
+# package.json "scripts" / "jest" key, a test runner config, a lint or type-check config changed since the run started
+# (see role-guard.sh protected-diff): a gate is not made to pass by changing what it checks, whatever tool made the change.
+# Journal: .pipeline/gate.log, one line per start / wait / reuse / cached / end / protected, with the process id.
 
 set -u
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 cd "$ROOT" || exit 0
 
@@ -159,6 +164,20 @@ answer_from_cache () {
   echo "gate: OK (unchanged since the last pass)"
   exit 0
 }
+
+# --- protected settings: a gate must not be made to pass by changing what it checks -----------------------
+# On every call, before the remembered pass: it is a few git calls, and a change here changes what a pass means.
+# role-guard.sh compares package.json scripts, lint / type-check / test configs with the version the run started from.
+GUARD="$HOOK_DIR/role-guard.sh"
+if [ -z "${GATE_NO_PROTECTED_CHECK:-}" ] && [ -f "$GUARD" ]; then
+  PROTECTED="$(CLAUDE_PROJECT_DIR="$ROOT" bash "$GUARD" protected-diff 2>&1 < /dev/null)"; PROTECTED_RC=$?
+  if [ "$PROTECTED_RC" -eq 2 ]; then
+    log "event=protected"
+    [ -n "$COUNTER" ] && echo $(( ${N:-0} + 1 )) > "$COUNTER"
+    printf 'GATE FAILED — %s\n' "$PROTECTED" >&2
+    exit 2
+  fi
+fi
 
 refresh_fingerprint
 answer_from_cache
