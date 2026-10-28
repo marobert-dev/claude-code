@@ -5,8 +5,10 @@
 #     the agent): reviewers only add, update or remove their own single-line marker comments, analyst only TODO:
 #     comments outside the story file and the contract, every other agent only its own paths, and no agent edits
 #     .claude/ or a file outside the workspace. No agent changes the "scripts" or the "jest" key of an existing
-#     package.json, nor an existing jest.config.*: the gate runs the scripts and jest picks its tests from that config,
-#     so `"test": "exit 0"` or an ignore pattern would pass it. New files and dependency edits stay allowed.
+#     package.json, an existing jest/vitest/playwright config (jest.config.*, vitest.config.*, vitest.workspace.*,
+#     playwright.config.*), or the "test" option of a vite.config.*: the gate runs the scripts and the test runners pick
+#     their tests from those configs, so `"test": "exit 0"` or an ignore pattern would pass it. New files (a
+#     vitest.config.* next to a vite.config.* excepted: it would override it) and dependency edits stay allowed.
 #   Stop / SubagentStop:
 #     bash .claude/hooks/role-guard.sh stop-plan            analyst: the plan it wrote has the fixed layout (pm-state.sh plan-check)
 #     bash .claude/hooks/role-guard.sh stop-tests <agent>   the test files this agent changed gained no constant assertion,
@@ -197,29 +199,68 @@ plain_text () {  # plain_text <file>: without the BOM and the carriage returns, 
   LC_ALL=C sed $'1s/^\xEF\xBB\xBF//' "$1" | tr -d '\r'
 }
 
-package_config_unchanged () {  # the change may leave "scripts" and "jest" as they are, or the package.json is new or already not JSON
-  [ -f "$ABS" ] || return 0
+after_edit () {  # after_edit <out file>: the existing $ABS as this Edit or Write would leave it; fails for any other tool
   shopt -u patsub_replacement 2>/dev/null
-  local before_config after_config text old new
-  plain_text "$ABS" > "$W/pkg.before"
-  before_config="$(gated_config_of "$W/pkg.before")" || return 0
+  local text old new
   case "$(field tool_name)" in
     Edit)
-      text="$(cat "$W/pkg.before")"; old="$(plain_text "$W/old_string")"; new="$(plain_text "$W/new_string")"
+      text="$(plain_text "$ABS")"; old="$(plain_text "$W/old_string")"; new="$(plain_text "$W/new_string")"
       if [ "$(field replace_all)" = true ]; then text="${text//"$old"/"$new"}"; else text="${text/"$old"/"$new"}"; fi
-      printf '%s\n' "$text" > "$W/pkg.after" ;;
-    Write) plain_text "$W/content" > "$W/pkg.after" ;;
-    *) return 0 ;;
+      printf '%s\n' "$text" > "$1" ;;
+    Write) plain_text "$W/content" > "$1" ;;
+    *) return 1 ;;
   esac
-  after_config="$(gated_config_of "$W/pkg.after")" \
+}
+
+package_config_unchanged () {  # the change may leave "scripts" and "jest" as they are, or the package.json is new or already not JSON
+  [ -f "$ABS" ] || return 0
+  local before_config after_config
+  plain_text "$ABS" > "$W/cfg.before"
+  before_config="$(gated_config_of "$W/cfg.before")" || return 0
+  after_edit "$W/cfg.after" || return 0
+  after_config="$(gated_config_of "$W/cfg.after")" \
     || block "this change would leave $REL invalid JSON; make each edit keep it valid."
   [ "$after_config" = "$before_config" ] \
     || block "$REL \"scripts\" are what the gate runs (lint, typecheck, build, test) and its \"jest\" key picks the tests; no agent changes them. Dependency edits are fine. Report the script or setting a story needs in your reply instead."
 }
 
-jest_config_untouched () {  # an existing jest.config.* decides which tests run; a new one is a scaffold
-  [ -f "$ABS" ] && block "$REL is the jest config the gate's tests run with (testMatch, ignore patterns, projects); no agent changes an existing one. Report the setting a story needs in your reply instead."
+test_config_untouched () {  # an existing test config decides which tests run; a new one is a scaffold
+  [ -f "$ABS" ] && block "$REL is test config (which tests run, which are ignored, which projects); no agent changes an existing one. Report the setting a story needs in your reply instead."
+  case "$(printf '%s' "${REL##*/}" | tr 'A-Z' 'a-z')" in
+    vitest.*) compgen -G "$(dirname "$ABS")/vite.config.*" >/dev/null \
+      && block "$REL would take over the vitest options of the vite.config next to it; no agent adds it. Report the setting a story needs in your reply instead." ;;
+  esac
   return 0
+}
+
+test_option_of () {  # test_option_of <vite config>: the text of its "test" option (vitest's), spaces and comments dropped; empty when it sets none
+  awk 'BEGIN { RS = "\001"; sq = "\047"; dq = "\042" }
+    {
+      s = $0; n = length(s)
+      if (!match(s, "(^|[^A-Za-z0-9_$.])[" sq dq "]?test[" sq dq "]?[ \t\r\n]*:[ \t\r\n]*")) exit
+      i = RSTART + RLENGTH; brace = (substr(s, i, 1) == "{"); depth = 0; q = ""; out = ""
+      for (; i <= n; i++) {
+        c = substr(s, i, 1); d = substr(s, i + 1, 1)
+        if (q != "") { out = out c; if (c == "\\") { i++; out = out substr(s, i, 1) } else if (c == q) q = ""; continue }
+        if (c == dq || c == sq || c == "`") { q = c; out = out c; continue }
+        if (c == "/" && d == "/") { while (i <= n && substr(s, i, 1) != "\n") i++; if (!brace) break; continue }
+        if (c == "/" && d == "*") { j = index(substr(s, i + 2), "*/"); i = (j ? i + j + 2 : n); continue }
+        if (brace) {
+          if (c == "{") depth++
+          else if (c == "}" && --depth == 0) { out = out c; break }
+        } else if (c == "\n") break
+        if (c !~ /[ \t\r\n]/) out = out c
+      }
+      print out
+    }' "$1"
+}
+
+vite_test_option_unchanged () {  # a vite.config.* may change, except the "test" option vitest reads from it
+  [ -f "$ABS" ] || return 0
+  plain_text "$ABS" > "$W/cfg.before"
+  after_edit "$W/cfg.after" || return 0
+  [ "$(test_option_of "$W/cfg.before")" = "$(test_option_of "$W/cfg.after")" ] \
+    || block "this change touches the \"test\" option (vitest) in $REL; no agent changes it. The rest of the file is fine to edit. Report the setting a story needs in your reply instead."
 }
 
 pre_tool () {
@@ -244,7 +285,8 @@ pre_tool () {
   in_paths '.claude/*' && block ".claude/ holds the pipeline's own agents, hooks and settings; no agent edits it."
   case "$(printf '%s' "${REL##*/}" | tr 'A-Z' 'a-z')" in
     package.json)  package_config_unchanged ;;
-    jest.config.*) jest_config_untouched ;;
+    jest.config.*|vitest.config.*|vitest.workspace.*|playwright.config.*) test_config_untouched ;;
+    vite.config.*) vite_test_option_unchanged ;;
   esac
 
   case "$ROLE" in

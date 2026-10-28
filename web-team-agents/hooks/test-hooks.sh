@@ -150,12 +150,35 @@ check "dev edits the jest config"            2 "$(edit_json pkgguard/jest.config
 check "dev rewrites the jest config"         2 "$(write_json pkgguard/jest.config.js 'module.exports = { testPathIgnorePatterns: ["/"] };' | guard dev-frontend)"
 check "a new jest config is allowed"         0 "$(write_json pkgguard/new/jest.config.cjs 'module.exports = {};' | guard dev-backend)"
 check "a jest setup file is not the config"  0 "$(write_json pkgguard/jest.setup.ts 'import "x";' | guard dev-frontend)"
+mkdir -p pkgguard/novitest
+printf 'import { defineConfig } from "vitest/config";\nexport default defineConfig({\n  server: { proxy: { "/api": { target: "http://localhost:5080" } } },\n  test: {\n    environment: "jsdom",\n    include: ["tests/**/*.test.ts"],\n  },\n});\n' > pkgguard/vite.config.ts
+printf 'export default { plugins: [] };\n' > pkgguard/novitest/vite.config.ts
+check "integrator edits the dev proxy"       0 "$(edit_json pkgguard/vite.config.ts '"http://localhost:5080"' '"http://localhost:9000"' | guard dev-integrator)"
+check "dev narrows the vitest include"       2 "$(edit_json pkgguard/vite.config.ts '"tests/**/*.test.ts"' '"nothing/**"' | guard dev-frontend)"
+check "dev rewrites vite config, same test option" 0 "$(write_json pkgguard/vite.config.ts 'export default { server: { port: 1 }, test: {
+  // reformatted
+  environment: "jsdom", include: ["tests/**/*.test.ts"],
+} };' | guard dev-frontend)"
+check "dev drops the vitest option"          2 "$(write_json pkgguard/vite.config.ts 'export default { server: { port: 1 } };' | guard dev-frontend)"
+check "dev adds a vitest option"             2 "$(edit_json pkgguard/novitest/vite.config.ts 'plugins: []' 'plugins: [], test: { exclude: ["**"] }' | guard dev-frontend)"
+check "a new vite config is allowed"         0 "$(write_json pkgguard/new/vite.config.ts 'export default { test: {} };' | guard dev-frontend)"
+printf 'export default {};\n' > pkgguard/vitest.workspace.ts; printf 'export default {};\n' > pkgguard/novitest/vitest.config.ts
+check "dev edits an existing vitest config"  2 "$(write_json pkgguard/novitest/vitest.config.ts 'export default { test: { exclude: ["**"] } };' | guard dev-frontend)"
+check "dev edits the vitest workspace"       2 "$(write_json pkgguard/vitest.workspace.ts 'export default ["x"];' | guard dev-frontend)"
+check "a vitest config would override vite config" 2 "$(write_json pkgguard/vitest.config.ts 'export default { test: { exclude: ["**"] } };' | guard dev-frontend)"
+check "a new vitest config is allowed alone" 0 "$(write_json pkgguard/new/vitest.config.ts 'export default {};' | guard dev-frontend)"
+printf 'export default {};\n' > pkgguard/playwright.config.ts; printf 'export default {};\n' > pkgguard/tests/e2e/playwright.config.ts
+check "dev edits the playwright config"      2 "$(write_json pkgguard/playwright.config.ts 'export default { testIgnore: ["**"] };' | guard dev-backend)"
+check "validator edits an e2e playwright config" 2 "$(write_json pkgguard/tests/e2e/playwright.config.ts 'export default { grep: /none/ };' | guard story-validator)"
+check "a new playwright config is allowed"   0 "$(write_json pkgguard/new/playwright.config.ts 'export default {};' | guard dev-backend)"
 NO_JQ_PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v -i 'jq' | paste -sd ':' -)"
 if command -v node >/dev/null 2>&1; then
   check "scripts check works with node, no jq" 2 "$(edit_json pkgguard/package.json '"test": "jest"' '"test": "exit 0"' \
     | PATH="$NO_JQ_PATH" bash .claude/hooks/role-guard.sh dev-backend >/dev/null 2>&1; echo $?)"
   check "jest key check works with node, no jq" 2 "$(edit_json pkgguard/package.json '"testEnvironment": "node"' '"testEnvironment": "jsdom"' \
     | PATH="$NO_JQ_PATH" bash .claude/hooks/role-guard.sh dev-backend >/dev/null 2>&1; echo $?)"
+  check "vitest option check works with node, no jq" 2 "$(edit_json pkgguard/vite.config.ts '"tests/**/*.test.ts"' '"nothing/**"' \
+    | PATH="$NO_JQ_PATH" bash .claude/hooks/role-guard.sh dev-frontend >/dev/null 2>&1; echo $?)"
   check "reordered keys pass with node, no jq" 0 "$(write_json pkgguard/package.json '{"jest":{"testEnvironment":"node"},"scripts":{"lint":"eslint .","test":"jest"}}' \
     | PATH="$NO_JQ_PATH" bash .claude/hooks/role-guard.sh dev-backend >/dev/null 2>&1; echo $?)"
 fi
