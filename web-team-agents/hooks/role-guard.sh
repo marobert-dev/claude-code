@@ -5,15 +5,28 @@
 #     the agent): reviewers only add, update or remove their own single-line marker comments, analyst only TODO:
 #     comments outside the story file and the contract, every other agent only its own paths, and no agent edits
 #     .claude/ or a file outside the workspace.
+#     Protected settings, which decide what the gate checks (so `"test": "exit 0"` or an ignore pattern would pass it):
+#     the "scripts" and "jest" key of package.json, jest / vitest / playwright / eslint configs, tsconfig*.json (but
+#     compilerOptions.paths and baseUrl), vite.config.* (but its "server" option, once it sets a vitest "test" option).
+#     No agent changes them; an edit that undoes an earlier change is fine, and so are dependency edits and the rest of a
+#     package.json. A new config in a package whose package.json is already committed is blocked too; in a package being
+#     scaffolded it is fine.
 #   Stop / SubagentStop:
 #     bash .claude/hooks/role-guard.sh stop-plan            analyst: the plan it wrote has the fixed layout (pm-state.sh plan-check)
 #     bash .claude/hooks/role-guard.sh stop-tests <agent>   the test files this agent changed gained no constant assertion,
 #                                                           .only, or skip without an OBSOLETE-TEST: marker (story-validator:
 #                                                           no fixed sleep either)
 #     A Stop check blocks the same agent at most ROLE_GUARD_MAX_BLOCKS times (default 2), then lets it finish.
+#   Called by the gate and pm-state.sh (no hook JSON; CLAUDE_PROJECT_DIR is the workspace):
+#     bash .claude/hooks/role-guard.sh protected-diff       exit 2 and a report when a protected setting differs from the
+#                                                           version the run started from, whatever tool changed it (Bash
+#                                                           included). That version is the committed one (HEAD), or a copy
+#                                                           kept in .pipeline/protected-baseline/ by protected-snapshot.
+#     bash .claude/hooks/role-guard.sh protected-snapshot   copies the protected files already modified now, so a run is only
+#                                                           held to its own changes; prints one PROTECTED line per file.
 # Reads the hook JSON on stdin and needs jq or node to parse it; without either, or on input it cannot parse, it lets
-# the call through: the prompts stay the first line of defence and this is the backstop. Writes made through Bash are
-# out of its reach by design.
+# the call through: the prompts stay the first line of defence and this is the backstop. An agent that rewrites the hook
+# scripts themselves with Bash is out of any in-workspace check's reach.
 
 set -u
 HOOKS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,12 +39,13 @@ MODE="${1:-}"; ROLE="${2:-}"
 case "$MODE" in
   stop-plan)  ROLE="analyst" ;;
   stop-tests) ;;
+  protected-diff|protected-snapshot) ROLE="gate" ;;
   '')         exit 0 ;;
   *)          ROLE="$MODE"; MODE="pre" ;;
 esac
 
-INPUT="$(cat 2>/dev/null || true)"
-FIELDS="tool_name tool_input.file_path tool_input.notebook_path tool_input.old_string tool_input.new_string tool_input.content agent_id agent_type session_id cwd"
+case "$MODE" in protected-*) INPUT="" ;; *) INPUT="$(cat 2>/dev/null || true)" ;; esac
+FIELDS="tool_name tool_input.file_path tool_input.notebook_path tool_input.old_string tool_input.new_string tool_input.content tool_input.replace_all agent_id agent_type session_id cwd"
 
 parse_input () {  # writes each field's raw text to $W/<last path segment>
   local f names i=0 val
@@ -169,14 +183,238 @@ in_paths () { local p; for p in "$@"; do case "$REL" in $p) return 0 ;; esac; do
 # e2e suites live in tests/e2e/ at the workspace root, or inside one repository of a multi-repo workspace
 in_e2e () { in_paths 'tests/e2e/*' '*/tests/e2e/*' 'e2e/*' '*/e2e/*'; }
 
-is_test_file () {  # unit or e2e test file, by folder or file-name convention
-  printf '%s' "$1" | grep -Eiq '(^|/)(tests?|__tests__|specs?|e2e)/|\.(test|spec)\.[cm]?[jt]sx?$|tests?\.cs$|(^|/)[^/]*\.tests?/'
+is_test_file () {  # unit or e2e test file or test setup file, by folder or file-name convention
+  printf '%s' "$1" | grep -Eiq '(^|/)(tests?|__tests__|specs?|e2e)/|\.(test|spec)\.[cm]?[jt]sx?$|tests?\.cs$|(^|/)[^/]*\.tests?/|(^|/)(jest|vitest)\.setup\.[^/]*$|(^|/)setup-?tests?\.[^/]*$'
 }
 
 remember_touched () {  # the test check at Stop looks only at files this agent changed (only these roles run it)
   case "$ROLE" in dev-frontend|dev-backend|dev-integrator|unit-tester|story-validator) ;; *) return 0 ;; esac
   local key; key="$(agent_key)"
   [ -n "$key" ] && printf '%s\n' "$REL" >> "$STATE/$key.touched"
+}
+
+# --- protected settings: what the gate and the test runners read --------------------------------------------------
+# An agent must not make the gate pass by changing what it checks: the package.json scripts and jest key, the test
+# runner configs, the lint and type-check configs. Edit and Write are judged before they land (pre_tool); a change
+# made any other way (Bash) is found afterwards by `protected-diff`, which the gate runs, against the version the run
+# started from: the committed one, or a copy taken by `protected-snapshot` of a file that was already modified then.
+
+protection_kind () {  # protection_kind <path>: package | tsconfig | vite | strict, or nothing for any other file
+  case "$(printf '%s' "${1##*/}" | tr 'A-Z' 'a-z')" in
+    package.json)                  echo package ;;
+    tsconfig.json|tsconfig.*.json) echo tsconfig ;;
+    vite.config.*)                 echo vite ;;
+    jest.config.*|vitest.config.*|vitest.workspace.*|playwright.config.*|eslint.config.*|.eslintrc|.eslintrc.*|.eslintignore)
+                                   echo strict ;;
+  esac
+}
+protected_part () {  # protected_part <kind>: what may not change in a file of that kind
+  case "$1" in
+    package)  echo '"scripts" and the "jest" key' ;;
+    tsconfig) echo 'everything but compilerOptions.paths and baseUrl' ;;
+    vite)     echo 'everything but the "server" option' ;;
+    *)        echo 'the whole file' ;;
+  esac
+}
+
+plain_text () {  # plain_text <file>: without the BOM and the carriage returns, so a CRLF file still matches an edit
+  LC_ALL=C sed $'1s/^\xEF\xBB\xBF//' "$1" | tr -d '\r'
+}
+
+# Comments and white space dropped, strings kept. With $1 the first option of that name ("server: {...}") is cut out; with
+# $2 nothing is printed unless the code sets a "test" option (vitest's).
+squash_code () {  # squash_code [dropped option] [1 = only when a test option is set]; reads stdin
+  awk -v drop="${1:-}" -v needtest="${2:-}" '
+    BEGIN { RS = "\001"; sq = "\047"; dq = "\042" }
+    function ident(ch) { return ch ~ /[A-Za-z0-9_$.]/ }
+    function quote(ch) { return ch == dq || ch == sq }
+    function drop_option(t, key,    base, k, pos, before, e, start, depth, q, c, j) {
+      base = 0
+      while ((k = index(substr(t, base + 1), key)) > 0) {
+        pos = base + k; base = pos
+        before = (pos > 1) ? substr(t, pos - 1, 1) : ""
+        if (before != "" && ident(before)) continue
+        e = pos + length(key)
+        if (quote(before) && quote(substr(t, e, 1))) e++
+        if (substr(t, e, 2) != ":{") continue
+        start = quote(before) ? pos - 1 : pos
+        depth = 0; q = ""
+        for (j = e + 1; j <= length(t); j++) {
+          c = substr(t, j, 1)
+          if (q != "") { if (c == "\\") j++; else if (c == q) q = ""; continue }
+          if (c == dq || c == sq || c == "`") { q = c; continue }
+          if (c == "{") depth++
+          else if (c == "}" && --depth == 0) break
+        }
+        if (substr(t, j + 1, 1) == ",") j++
+        return substr(t, 1, start - 1) substr(t, j + 1)
+      }
+      return t
+    }
+    {
+      s = $0; n = length(s); out = ""; q = ""
+      for (i = 1; i <= n; i++) {
+        c = substr(s, i, 1); d = substr(s, i + 1, 1)
+        if (q != "") { out = out c; if (c == "\\") { i++; out = out substr(s, i, 1) } else if (c == q) q = ""; continue }
+        if (c == dq || c == sq || c == "`") { q = c; out = out c; continue }
+        if (c == "/" && d == "/") { while (i <= n && substr(s, i, 1) != "\n") i++; continue }
+        if (c == "/" && d == "*") { j = index(substr(s, i + 2), "*/"); i = (j ? i + j + 2 : n); continue }
+        if (c !~ /[ \t\r\n]/) out = out c
+      }
+      if (needtest != "" && !match(out, "(^|[^A-Za-z0-9_$.])[" sq dq "]?test[" sq dq "]?:")) exit
+      if (drop != "") out = drop_option(out, drop)
+      print out
+    }'
+}
+
+json_state () {  # json_state package|tsconfig: stdin JSON reduced to the settings the gate depends on, keys sorted; fails when it is not JSON
+  if command -v jq >/dev/null 2>&1; then
+    case "$1" in
+      package) jq -S -c '{scripts: (.scripts // {}), jest: .jest}' 2>/dev/null ;;
+      *)       jq -S -c 'del(.compilerOptions.paths, .compilerOptions.baseUrl)' 2>/dev/null ;;
+    esac
+  else
+    node -e 'const sorted = v => Array.isArray(v) ? v.map(sorted) : v && typeof v === "object"
+        ? Object.fromEntries(Object.keys(v).sort().map(k => [k, sorted(v[k])])) : v;
+      let d = ""; process.stdin.on("data", c => d += c).on("end", () => {
+        try {
+          const j = JSON.parse(d); let o = j;
+          if (process.argv[1] === "package") o = { scripts: j.scripts || {}, jest: j.jest === undefined ? null : j.jest };
+          else if (j.compilerOptions && typeof j.compilerOptions === "object") { delete j.compilerOptions.paths; delete j.compilerOptions.baseUrl; }
+          console.log(JSON.stringify(sorted(o)));
+        } catch (e) { process.exit(1); }
+      });' "$1" 2>/dev/null
+  fi
+}
+
+protected_state () {  # protected_state <kind> <file>: canonical text of the part of <file> that must not change; fails when it cannot be read
+  case "$1" in
+    package)  plain_text "$2" | json_state package ;;
+    tsconfig) plain_text "$2" | squash_code | sed 's/,\([]}]\)/\1/g' | json_state tsconfig ;;   # JSONC: no comments, no trailing commas
+    vite)     plain_text "$2" | squash_code server 1 ;;
+    *)        plain_text "$2" ;;
+  esac
+}
+
+abs_key () { lower "$(physical "$(canon "$(norm "$1")")")" | cksum | cut -d' ' -f1; }
+
+baseline_file () {  # baseline_file <abs path> <out file>: the file as the run started from it; fails when it did not exist then
+  local abs="$1" key
+  key="$(abs_key "$abs")"
+  [ -e "$BASELINE_DIR/$key.deleted" ] && return 1
+  if [ -f "$BASELINE_DIR/$key" ]; then cp "$BASELINE_DIR/$key" "$2"; return; fi
+  git -C "$(dirname "$abs")" show "HEAD:./${abs##*/}" > "$2" 2>/dev/null
+}
+
+package_established () {  # package_established <abs path>: the nearest package.json above it is already committed (a new package is still being scaffolded)
+  local dir prefix
+  dir="$(dirname "$1")"
+  while [ ! -d "$dir" ] && [ "$dir" != "$(dirname "$dir")" ]; do dir="$(dirname "$dir")"; done
+  git -C "$dir" rev-parse --verify -q HEAD >/dev/null 2>&1 || return 1
+  prefix="$(git -C "$dir" rev-parse --show-prefix 2>/dev/null)" || return 1
+  while :; do
+    if [ -f "$dir/package.json" ]; then git -C "$dir" cat-file -e "HEAD:${prefix}package.json" 2>/dev/null; return; fi
+    [ -n "$prefix" ] || return 1
+    prefix="${prefix%/}"; prefix="${prefix%"${prefix##*/}"}"
+    dir="$(dirname "$dir")"
+  done
+}
+
+after_edit () {  # after_edit <out file>: the existing $ABS as this Edit or Write would leave it; fails for any other tool
+  shopt -u patsub_replacement 2>/dev/null
+  local text old new
+  case "$(field tool_name)" in
+    Edit)
+      text="$(plain_text "$ABS")"; old="$(plain_text "$W/old_string")"; new="$(plain_text "$W/new_string")"
+      if [ "$(field replace_all)" = true ]; then text="${text//"$old"/"$new"}"; else text="${text/"$old"/"$new"}"; fi
+      printf '%s\n' "$text" > "$1" ;;
+    Write) plain_text "$W/content" > "$1" ;;
+    *) return 1 ;;
+  esac
+}
+
+protected_edit_check () {  # judge an Edit or Write on a protected file before it lands
+  local kind before after
+  kind="$(protection_kind "$REL")"; [ -n "$kind" ] || return 0
+  if [ ! -f "$ABS" ]; then   # a new file: a new package.json, or config of a package still being scaffolded, is fine
+    [ "$kind" = package ] || ! package_established "$ABS" \
+      || block "$REL would be new $kind config in a package that is already committed, and config decides which checks and tests the gate runs; no agent adds it. Report the setting a story needs in your reply instead."
+    return 0
+  fi
+  plain_text "$ABS" > "$W/cfg.before"
+  before="$(protected_state "$kind" "$W/cfg.before")" || return 0   # already unreadable: nothing to compare with
+  after_edit "$W/cfg.after" || return 0
+  after="$(protected_state "$kind" "$W/cfg.after")" \
+    || block "this change would leave $REL invalid JSON; make each edit keep it valid."
+  [ "$after" = "$before" ] && return 0
+  # Undoing an earlier change (back to the version the run started from) is always fine.
+  if baseline_file "$ABS" "$W/cfg.base" && [ "$after" = "$(protected_state "$kind" "$W/cfg.base")" ]; then return 0; fi
+  block "$REL: $(protected_part "$kind") may not change; it decides which checks and tests the gate runs. The rest of the file is fine to edit. Report the script or setting a story needs in your reply instead."
+}
+
+# --- protected settings: changes made any other way -----------------------------------------------------------------
+repo_tops () {  # the git repositories the gate covers: the workspace root and its folders
+  local d
+  for d in . $(find . -mindepth 1 -maxdepth 1 -type d ! -name '.*' ! -name node_modules ! -name docs -printf '%f ' 2>/dev/null); do
+    git -C "$d" rev-parse --show-toplevel 2>/dev/null
+  done | sort -u
+}
+
+protected_candidates () {  # protected_candidates <repo top>: protected files that differ from HEAD (modified, deleted or new)
+  { git -C "$1" diff HEAD --name-only 2>/dev/null; git -C "$1" ls-files --others --exclude-standard 2>/dev/null; } | sort -u \
+    | while IFS= read -r p; do
+        case "$p" in node_modules/*|*/node_modules/*) continue ;; esac
+        [ -n "$(protection_kind "$p")" ] && printf '%s\n' "$p"
+      done
+}
+
+violation_of () {  # violation_of <abs path> <name to show>: how the file differs from where the run started, or nothing
+  local abs="$1" shown="$2" kind state_base state_now
+  kind="$(protection_kind "$abs")"
+  if baseline_file "$abs" "$W/cfg.base"; then
+    [ -f "$abs" ] || { echo "$shown: deleted"; return; }
+    state_base="$(protected_state "$kind" "$W/cfg.base")" || return 0
+    state_now="$(protected_state "$kind" "$abs")" || { echo "$shown: no longer valid JSON"; return; }
+    [ "$state_now" = "$state_base" ] || echo "$shown: changed ($(protected_part "$kind"))"
+  elif [ -f "$abs" ] && [ "$kind" != package ] && package_established "$abs"; then
+    echo "$shown: new config in a package that is already committed"
+  fi
+}
+
+for_each_candidate () {  # for_each_candidate <function>: calls it with <abs path> <path shown> for every protected file that differs from HEAD
+  local top p
+  while IFS= read -r top; do
+    git -C "$top" rev-parse --verify -q HEAD >/dev/null 2>&1 || continue
+    while IFS= read -r p; do "$1" "$top/$p" "$p"; done < <(protected_candidates "$top")
+  done < <(repo_tops)
+}
+
+enter_workspace () {  # the workspace root is where .pipeline/ lives
+  local root; root="$(norm "${CLAUDE_PROJECT_DIR:-$(pwd)}")"
+  cd "$root" 2>/dev/null || exit 0
+  BASELINE_DIR="$(physical "$(canon "$root")")/.pipeline/protected-baseline"
+}
+
+protected_diff () {  # exit 2 with a report when a protected file changed since the run started
+  local report=""
+  enter_workspace
+  collect_violation () { report="$report$(violation_of "$1" "$2" | sed 's/^/  /')"$'\n'; }
+  for_each_candidate collect_violation
+  report="$(printf '%s' "$report" | grep .)" || exit 0
+  printf 'protected settings changed since the run started; they decide which checks and tests the gate runs, so no agent changes them to make it pass:\n%s\nUndo these changes (only the protected part; keep other work) and report the script or setting a story needs in your reply instead.\n' "$report" >&2
+  exit 2
+}
+
+protected_snapshot () {  # take the protected files that are already modified as the baseline, so the run is only held to its own changes
+  enter_workspace
+  rm -rf "$BASELINE_DIR"
+  keep_dirty () {
+    [ -n "$(violation_of "$1" "$2")" ] || return 0
+    mkdir -p "$BASELINE_DIR"
+    if [ -f "$1" ]; then cp "$1" "$BASELINE_DIR/$(abs_key "$1")"; else : > "$BASELINE_DIR/$(abs_key "$1").deleted"; fi
+    echo "PROTECTED already modified: $2 (taken as the baseline for this run)"
+  }
+  for_each_candidate keep_dirty
 }
 
 pre_tool () {
@@ -190,6 +428,7 @@ pre_tool () {
   case "$target" in /*|[a-z]:/*) ;; *) target="$root/$target" ;; esac
   # Compare real locations: "tests/e2e/../../src/x.ts" is src/x.ts, and a symlinked folder is where it points.
   root="$(physical "$(canon "$root")")"
+  BASELINE_DIR="$root/.pipeline/protected-baseline"
   target="$(canon "$target")" || block "$raw climbs above the file system root."
   target="$(physical "$target")"
   ABS="$target"
@@ -199,6 +438,7 @@ pre_tool () {
   fi
   REL="${target:${#root}+1}"
   in_paths '.claude/*' && block ".claude/ holds the pipeline's own agents, hooks and settings; no agent edits it."
+  protected_edit_check
 
   case "$ROLE" in
     # .decisions/ is where every agent logs its judgment calls when team memory is off.
@@ -273,6 +513,7 @@ stop_tests () {
   export GUARD_FOCUSED='(^|[^.[:alnum:]_])((it|test|describe)\.only|fit|fdescribe)\('
   export GUARD_SKIPPED='(^|[^.[:alnum:]_])((it|test|describe)\.(skip|todo|fixme)|x(it|test|describe))\(|Skip[[:space:]]*=[[:space:]]*"|\[Ignore'
   export GUARD_SLEEP='waitForTimeout\('
+  export GUARD_SETUP='process\.exit[[:space:]]*\(|(global(This)?|window)\.expect[[:space:]]*=[^=]'
   while IFS= read -r rel; do
     [ -n "$rel" ] && is_test_file "$rel" || continue
     abs="$root/$rel"; [ -f "$abs" ] || continue
@@ -283,6 +524,7 @@ stop_tests () {
       t ~ ENVIRON["GUARD_SKIPPED"] && t !~ /OBSOLETE-TEST:/ && prev !~ /OBSOLETE-TEST:/ { kind = "skipped test without an OBSOLETE-TEST: marker" }
       t ~ ENVIRON["GUARD_SKIPPED"] && (role == "unit-tester" || role == "story-validator") { kind = "skipped test (yours must run)" }
       role == "story-validator" && t ~ ENVIRON["GUARD_SLEEP"] { kind = "fixed sleep (use web-first assertions)" }
+      t ~ ENVIRON["GUARD_SETUP"] { kind = "ends the test process or replaces expect (a setup file runs before every test)" }
       kind != "" { gsub(/^[ \t]+/, "", t); printf "%s:%s: %s: %s\n", f, $1, kind, substr(t, 1, 100) }
       { prev = t }')"
   done < <(sort -u "$list")
@@ -296,5 +538,7 @@ case "$MODE" in
   pre)        pre_tool ;;
   stop-plan)  stop_plan ;;
   stop-tests) stop_tests ;;
+  protected-diff)     protected_diff ;;
+  protected-snapshot) protected_snapshot ;;
 esac
 exit 0

@@ -109,6 +109,101 @@ rm -rf linked "$WS.outside"
 check "Windows-style path is understood"    2 "$(P="$(cygpath -w "$WS/contracts/openapi.yaml" 2>/dev/null || echo "$WS/contracts/openapi.yaml")" \
   jq -n '{tool_name:"Write", agent_id:"w", tool_input:{file_path:$ENV.P, content:"x"}}' | guard dev-backend)"
 
+# --- protected settings, judged before an Edit or Write lands -----------------------------------------------------
+# package.json scripts and jest key, test runner config, lint and type-check config. P is a git repo of its own, so
+# "already committed" means something.
+P="$WS/prot"; mkdir -p "$P/web" "$P/novite" "$P/tests/e2e"
+PKG='{
+  "name": "app",
+  "scripts": {
+    "lint": "eslint .",
+    "test": "jest"
+  },
+  "jest": {
+    "testEnvironment": "node"
+  },
+  "dependencies": {
+    "react": "18.3.1"
+  }
+}'
+printf '%s\n' "$PKG" > "$P/package.json"
+printf '{"name":"web","scripts":{"test":"vitest run"}}\n' > "$P/web/package.json"
+printf '{"name":"novite"}\n' > "$P/novite/package.json"
+printf 'export default [];\n' > "$P/eslint.config.js"
+printf 'export default {};\n' > "$P/vitest.config.ts"
+printf 'export default {};\n' > "$P/tests/e2e/playwright.config.ts"
+printf 'export default {};\n' > "$P/playwright.config.ts"
+printf '// compiler\n{\n  "$schema": "https://json.schemastore.org/tsconfig",\n  "compilerOptions": { "strict": true, "paths": { "@/*": ["src/*"] }, },\n  "include": ["src"],\n}\n' > "$P/tsconfig.json"
+printf 'import { defineConfig } from "vitest/config";\nexport default defineConfig({\n  server: { proxy: { "/api": { target: "http://localhost:5080" } } },\n  test: {\n    environment: "jsdom",\n    include: ["tests/**/*.test.ts"],\n  },\n});\n' > "$P/web/vite.config.ts"
+printf 'export default { plugins: [] };\n' > "$P/novite/vite.config.ts"
+( cd "$P" && git init -q && git config user.email t@t && git config user.name t && git add -A && git commit -qm base ) >/dev/null 2>&1
+printf '%s\n' "$PKG" | sed 's/$/\r/' > "$P/tests/e2e/package.json"      # a CRLF file
+mkdir -p "$P/broken" && printf '{ "scripts": ' > "$P/broken/package.json"  # not JSON yet
+check "dev adds a dependency"                0 "$(edit_json prot/package.json '"react": "18.3.1"' '"react": "18.3.1",
+    "zod": "3.23.8"' | guard dev-frontend)"
+check "dev reorders package.json keys"       0 "$(write_json prot/package.json '{"jest":{"testEnvironment":"node"},"scripts":{"test":"jest","lint":"eslint ."},"dependencies":{}}' | guard dev-backend)"
+check "dev weakens the test script"          2 "$(edit_json prot/package.json '"test": "jest"' '"test": "exit 0"' | guard dev-backend)"
+check "dev removes the lint script"          2 "$(edit_json prot/package.json '    "lint": "eslint .",
+' '' | guard dev-frontend)"
+check "dev adds a script"                    2 "$(edit_json prot/package.json '"lint": "eslint .",' '"lint": "eslint .",
+    "test:unit": "exit 0",' | guard dev-integrator)"
+check "dev rewrites package.json with other scripts" 2 "$(write_json prot/package.json '{"jest":{"testEnvironment":"node"},"scripts":{"test":"exit 0"}}' | guard dev-backend)"
+check "dev changes scripts in a CRLF file"   2 "$(edit_json prot/tests/e2e/package.json '"test": "jest"' '"test": "true"' | guard story-validator)"
+check "an edit that breaks the JSON"         2 "$(edit_json prot/package.json '"name": "app",' '"name": "app"' | guard dev-frontend)"
+check "dev ignores tests in the jest key"    2 "$(edit_json prot/package.json '"testEnvironment": "node"' '"testEnvironment": "node",
+    "testPathIgnorePatterns": ["/"]' | guard dev-backend)"
+check "dev removes the jest key"             2 "$(write_json prot/package.json '{"scripts":{"test":"jest","lint":"eslint ."}}' | guard dev-backend)"
+check "a new package.json is allowed"        0 "$(write_json prot/new/package.json '{"scripts":{"test":"jest"}}' | guard dev-backend)"
+check "a package.json that is not JSON yet"  0 "$(write_json prot/broken/package.json '{"scripts":{"test":"jest"}}' | guard dev-backend)"
+check "another file is not affected"         0 "$(write_json prot/package-lock.json '{"lockfileVersion":3}' | guard dev-backend)"
+# a file already tampered with: undoing the change is allowed, anything else is not
+printf '{"name":"web","scripts":{"test":"exit 0"}}\n' > "$P/web/package.json"
+check "an edit that undoes a change"         0 "$(edit_json prot/web/package.json '"exit 0"' '"vitest run"' | guard dev-frontend)"
+check "another change to a tampered file"    2 "$(edit_json prot/web/package.json '"exit 0"' '"true"' | guard dev-frontend)"
+git -C "$P" checkout -q -- web/package.json
+# test runner and lint config: the whole file
+check "dev edits the lint config"            2 "$(write_json prot/eslint.config.js 'export default [{ ignores: ["**"] }];' | guard dev-frontend)"
+check "dev edits the vitest config"          2 "$(write_json prot/vitest.config.ts 'export default { test: { exclude: ["**"] } };' | guard dev-frontend)"
+check "dev edits the playwright config"      2 "$(write_json prot/playwright.config.ts 'export default { testIgnore: ["**"] };' | guard dev-backend)"
+check "validator edits an e2e playwright config" 2 "$(write_json prot/tests/e2e/playwright.config.ts 'export default { grep: /none/ };' | guard story-validator)"
+# a new config in a package that is already committed would change what runs; in a package being scaffolded it is fine
+check "a new jest config in a committed package"   2 "$(write_json prot/jest.config.cjs 'module.exports = { testMatch: [] };' | guard dev-backend)"
+check "a new vitest config next to a vite config"  2 "$(write_json prot/web/vitest.config.ts 'export default {};' | guard dev-frontend)"
+check "a new lint config in a nested package"      2 "$(write_json prot/novite/eslint.config.js 'export default [];' | guard dev-frontend)"
+mkdir -p "$P/fresh" && printf '{"scripts":{"test":"jest"}}\n' > "$P/fresh/package.json"
+check "a new config in a package being scaffolded" 0 "$(write_json prot/fresh/jest.config.js 'module.exports = {};' | guard dev-backend)"
+check "a jest setup file is not the config"        0 "$(write_json prot/jest.setup.ts 'import "x";' | guard dev-frontend)"
+# type-check config: everything but paths and baseUrl, comments and trailing commas ignored
+check "dev turns strict off"                 2 "$(edit_json prot/tsconfig.json '"strict": true' '"strict": false' | guard dev-frontend)"
+check "dev narrows the included files"       2 "$(edit_json prot/tsconfig.json '"include": ["src"]' '"include": []' | guard dev-frontend)"
+check "dev adds a path alias"                0 "$(edit_json prot/tsconfig.json '"@/*": ["src/*"]' '"@/*": ["lib/*"]' | guard dev-frontend)"
+check "dev edits a tsconfig comment"         0 "$(edit_json prot/tsconfig.json '// compiler' '// compiler options' | guard dev-frontend)"
+# vite config: what vitest reads, so everything but the dev server, once it sets a test option
+check "integrator edits the dev proxy"       0 "$(edit_json prot/web/vite.config.ts '"http://localhost:5080"' '"http://localhost:9000"' | guard dev-integrator)"
+check "dev narrows the vitest include"       2 "$(edit_json prot/web/vite.config.ts '"tests/**/*.test.ts"' '"nothing/**"' | guard dev-frontend)"
+check "dev hides a setting outside the test option" 2 "$(edit_json prot/web/vite.config.ts 'export default defineConfig({' 'const SKIP = ["**"];
+export default defineConfig({' | guard dev-frontend)"
+check "dev rewrites the server option only"  0 "$(write_json prot/web/vite.config.ts 'import { defineConfig } from "vitest/config";
+export default defineConfig({
+  server: { port: 1 },
+  test: {
+    environment: "jsdom",
+    include: ["tests/**/*.test.ts"],
+  },
+});' | guard dev-frontend)"
+check "dev drops the vitest option"          2 "$(write_json prot/web/vite.config.ts 'export default { server: { port: 1 } };' | guard dev-frontend)"
+check "dev edits a vite config without vitest" 0 "$(edit_json prot/novite/vite.config.ts 'plugins: []' 'plugins: [react()]' | guard dev-frontend)"
+check "dev adds a vitest option"             2 "$(edit_json prot/novite/vite.config.ts 'plugins: []' 'plugins: [], test: { exclude: ["**"] }' | guard dev-frontend)"
+NO_JQ_PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v -i 'jq' | paste -sd ':' -)"
+if command -v node >/dev/null 2>&1; then
+  nojq () { PATH="$NO_JQ_PATH" bash .claude/hooks/role-guard.sh "$1" >/dev/null 2>&1; echo $?; }
+  check "scripts check works with node, no jq"   2 "$(edit_json prot/package.json '"test": "jest"' '"test": "exit 0"' | nojq dev-backend)"
+  check "reordered keys pass with node, no jq"   0 "$(write_json prot/package.json '{"jest":{"testEnvironment":"node"},"scripts":{"lint":"eslint .","test":"jest"}}' | nojq dev-backend)"
+  check "tsconfig check works with node, no jq"  2 "$(edit_json prot/tsconfig.json '"strict": true' '"strict": false' | nojq dev-frontend)"
+  check "tsconfig paths pass with node, no jq"   0 "$(edit_json prot/tsconfig.json '"@/*": ["src/*"]' '"@/*": ["lib/*"]' | nojq dev-frontend)"
+  check "vite check works with node, no jq"      2 "$(edit_json prot/web/vite.config.ts '"tests/**/*.test.ts"' '"nothing/**"' | nojq dev-frontend)"
+fi
+
 # --- Stop: test smells in the files the agent touched ------------------------------------------------------------
 smell () {  # smell <agent> <agent_id> <test file content> [path]: the agent writes the test file, then stops
   local f="${4:-frontend/tests/smell.test.ts}"
@@ -125,6 +220,9 @@ check "marked skip still blocks unit-tester" 2 "$(smell unit-tester a5 '// OBSOL
 it.skip("old total", () => {});')"
 check "fixed sleep blocks story-validator"  2 "$(smell story-validator a6 'await page.waitForTimeout(500);' tests/e2e/01-x/smell.spec.ts)"
 check "real assertions pass"                0 "$(smell unit-tester a7 'it("x", () => { expect(total(2)).toBe(2); });')"
+check "a setup file that ends the process"  2 "$(smell dev-frontend a9 'process.exit(0);' frontend/jest.setup.ts)"
+check "a setup file that replaces expect"   2 "$(smell unit-tester a10 'globalThis.expect = () => {};' src/setupTests.ts)"
+check "an ordinary setup file passes"       0 "$(smell unit-tester a11 'import "@testing-library/jest-dom";' src/setupTests.ts)"
 smell unit-tester a8 'expect(1).toBe(1);' >/dev/null; smell unit-tester a8 'expect(1).toBe(1);' >/dev/null
 check "a Stop check gives up after 2 blocks" 0 "$(stop_json a8 | guard stop-tests unit-tester)"
 git checkout -q -- frontend/tests; rm -f frontend/tests/smell.test.ts tests/e2e/01-x/smell.spec.ts
@@ -180,7 +278,6 @@ out="$(cd "$WS/gate-ws" && CLAUDE_PROJECT_DIR="$WS/gate-ws" PATH="$NO_NODE_PATH"
 check "gate fails NOT CHECKED without npm"  2 "$rc"
 check "gate names what it could not check"  1 "$(printf '%s\n' "$out" | grep -c 'NOT CHECKED')"
 if command -v node >/dev/null 2>&1; then
-  NO_JQ_PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v -i 'jq' | paste -sd ':' -)"
   check "gate reads package.json with node when jq is missing" 0 \
     "$(cd "$WS/gate-ws" && CLAUDE_PROJECT_DIR="$WS/gate-ws" PATH="$NO_JQ_PATH" GATE_NO_CACHE=1 bash "$HOOKS/gate.sh" < /dev/null >/dev/null 2>&1; echo $?)"
   check "role-guard parses with node when jq is missing" 2 \
@@ -268,6 +365,71 @@ check "full gate labels the e2e step"           1 "$(printf '%s\n' "$out" | grep
 check "full gate ran test:unit as its own step" "ran" "$(cat "$GW3/.pipeline/unit.txt" 2>/dev/null)"
 check "full gate does not also run npm test"    0 "$(printf '%s\n' "$out" | grep -c 'npm test (pkg-split)')"
 check "a chained test runs whole, not split"    "1 0" "$(printf '%s\n' "$out" | grep -c 'npm test (pkg-chain) FAILED') $(printf '%s\n' "$out" | grep -c 'npm test:unit (pkg-chain)')"
+
+# --- protected settings, found afterwards whatever tool changed them (Bash included) -----------------------------
+pd () { CLAUDE_PROJECT_DIR="$P" bash "$HOOKS/role-guard.sh" protected-diff < /dev/null >/dev/null 2>&1; echo $?; }
+rs () { git -C "$P" checkout -q -- . && git -C "$P" clean -fdq && rm -rf "$P/.pipeline"; }
+rs
+check "protected-diff: nothing changed"       0 "$(pd)"
+sed -i 's/"react": "18.3.1"/"react": "18.3.1", "zod": "3"/' "$P/package.json"
+check "protected-diff: a dependency"          0 "$(pd)"; rs
+sed -i 's/"test": "jest"/"test": "exit 0"/' "$P/package.json"
+check "protected-diff: a script weakened"     2 "$(pd)"; rs
+sed -i 's/"node"/"jsdom"/' "$P/package.json"
+check "protected-diff: the jest key"          2 "$(pd)"; rs
+echo '// x' >> "$P/eslint.config.js"
+check "protected-diff: the lint config"       2 "$(pd)"; rs
+sed -i 's/"strict": true/"strict": false/' "$P/tsconfig.json"
+check "protected-diff: strict turned off"     2 "$(pd)"; rs
+sed -i 's#"src/\*"#"lib/*"#' "$P/tsconfig.json"
+check "protected-diff: a path alias"          0 "$(pd)"; rs
+sed -i 's#5080#9000#' "$P/web/vite.config.ts"
+check "protected-diff: the dev proxy"         0 "$(pd)"; rs
+sed -i 's#tests/\*\*/\*.test.ts#nothing#' "$P/web/vite.config.ts"
+check "protected-diff: the vitest include"    2 "$(pd)"; rs
+rm "$P/vitest.config.ts"
+check "protected-diff: a config deleted"      2 "$(pd)"; rs
+printf 'module.exports = {};\n' > "$P/jest.config.js"
+check "protected-diff: a new jest config"     2 "$(pd)"; rs
+mkdir -p "$P/fresh" && printf '{"scripts":{"test":"jest"}}\n' > "$P/fresh/package.json" && printf 'module.exports = {};\n' > "$P/fresh/jest.config.js"
+check "protected-diff: a scaffolded package"  0 "$(pd)"; rs
+printf '{ "scripts": ' > "$P/package.json"
+check "protected-diff: package.json broken"   2 "$(pd)"; rs
+# a file already modified when the run starts is the baseline; only changes after that count
+sed -i 's/"test": "jest"/"test": "jest --ci"/' "$P/package.json"
+check "protected-diff: modified before the run" 2 "$(pd)"
+check "protected-snapshot names the file"     1 "$(CLAUDE_PROJECT_DIR="$P" bash "$HOOKS/role-guard.sh" protected-snapshot < /dev/null 2>/dev/null | grep -c 'PROTECTED already modified: package.json')"
+check "protected-diff: after the snapshot"    0 "$(pd)"
+sed -i 's/"lint": "eslint ."/"lint": "true"/' "$P/package.json"
+check "protected-diff: a change after it"     2 "$(pd)"
+sed -i 's/"lint": "true"/"lint": "eslint ."/' "$P/package.json"
+check "protected-diff: back to the snapshot"  0 "$(pd)"; rs
+mkdir -p "$WS/nocommit" && ( cd "$WS/nocommit" && git init -q && printf '{"scripts":{"test":"x"}}\n' > package.json )
+check "protected-diff: a repository without a commit" 0 "$(CLAUDE_PROJECT_DIR="$WS/nocommit" bash "$HOOKS/role-guard.sh" protected-diff < /dev/null >/dev/null 2>&1; echo $?)"
+
+# the gate runs it first, whatever its own checks and the remembered pass say
+GP="$WS/gate-prot"; mkgw "$GP" pkg; printf '{"scripts":{"test":"exit 0"}}\n' > "$GP/pkg/package.json"; commit_gw "$GP"
+out="$(gate_in "$GP" -- --full)"; rc=$?
+check "gate passes on untouched settings"     0 "$rc"
+sed -i 's/"exit 0"/"exit 0 \&\& true"/' "$GP/pkg/package.json"
+out="$(gate_in "$GP" -- --full)"; rc=$?
+check "gate fails when a script was changed, though the checks pass" 2 "$rc"
+check "gate names the protected file"         1 "$(printf '%s\n' "$out" | grep -c 'pkg/package.json: changed')"
+out="$(gate_in "$GP" GATE_NO_PROTECTED_CHECK=1 -- --full)"; rc=$?
+check "GATE_NO_PROTECTED_CHECK skips the check" 0 "$rc"
+git -C "$GP" checkout -q -- pkg/package.json
+out="$(gate_in "$GP" -- --full)"; rc=$?
+check "gate passes again once it is undone"   0 "$rc"
+# pm-state start takes the settings that are already modified as the baseline
+mkdir -p "$GP/.claude/hooks" && cp "$HOOKS/role-guard.sh" "$HOOKS/pm-state.sh" "$GP/.claude/hooks/"
+sed -i 's/"exit 0"/"exit 0 \&\& true"/' "$GP/pkg/package.json"
+check "pm-state start lists a modified setting" 1 "$(cd "$GP" && CLAUDE_PROJECT_DIR="$GP" bash .claude/hooks/pm-state.sh start 2>/dev/null | grep -c 'PROTECTED already modified: pkg/package.json')"
+out="$(gate_in "$GP" -- --full)"; rc=$?
+check "gate accepts it as the baseline"       0 "$rc"
+sed -i 's/"exit 0 \&\& true"/"exit 0 || true"/' "$GP/pkg/package.json"
+out="$(gate_in "$GP" -- --full)"; rc=$?
+check "gate still fails on a later change"    2 "$rc"
+rm -rf "$P" "$GP" "$WS/nocommit"
 
 # --- pm-state start: is the dev agents' stop wired to the gate? --------------------------------------------------
 WIRE="$WS/wire"; mkdir -p "$WIRE/.claude/hooks" "$WS/home/.claude/agents"
