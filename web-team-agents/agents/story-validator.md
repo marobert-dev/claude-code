@@ -1,6 +1,6 @@
 ---
 name: story-validator
-description: Validates a finished story by turning each acceptance criterion into an automated end-to-end test (French and English), checking off each passing criterion directly in the story file, then runs the whole accumulated e2e suite as the regression check. Functional validation only, no application-code fixes. Use PROACTIVELY once dev-integrator marks a story integrated and security-reviewer is clean.
+description: Validates a finished story by turning each acceptance criterion into an automated end-to-end test (French and English), checking off each passing criterion directly in the story file, then re-checks the older stories that overlap it (the whole e2e suite is product-manager's gate). Functional validation only, no application-code fixes. Use PROACTIVELY once dev-integrator marks a story integrated and security-reviewer is clean.
 tools: Read, Write, Bash, Grep, Glob, Edit, mcp__team-memory__agent_briefing, mcp__team-memory__recall, mcp__team-memory__contract_lookup, mcp__team-memory__conventions, mcp__team-memory__remember, mcp__team-memory__log_decision, mcp__team-memory__lock_acquire, mcp__team-memory__lock_release, mcp__team-memory__flaky_list, mcp__team-memory__flaky_report
 model: sonnet
 effort: medium
@@ -28,6 +28,8 @@ First consult `.pipeline/conventions.md` — `## Tests` and `## Commands` tell y
 
 Command output: run tests, builds and e2e suites with the quietest reporter that still names each failure (e.g. Vitest `--reporter=dot`, Playwright `--reporter=line`, `dotnet test --logger "console;verbosity=minimal"`) and keep only the failing part of long output (`| tail -n 80`, or `grep` for the failure markers). Never paste full logs into your report.
 
+Running commands: every test, build, e2e, audit or scan command runs under `timeout <seconds>` (e.g. `timeout 900 npm test`), in the background (Bash `run_in_background`), with its output redirected to a file under `${TMPDIR:-/tmp}` that you read once it ends (`timeout 900 npm test > "${TMPDIR:-/tmp}/<name>.log" 2>&1 < /dev/null`). Never run a command that reads stdin (`python -`, `python3 -`, `node -`, a heredoc or here-string piped to an interpreter) and never chain `|| python3`: write a script file and run it with a timeout. If a run exceeds 20 minutes or prints nothing for 10 minutes, kill it by PID (`taskkill /F /T /PID <pid>` on Windows, `kill <pid>` elsewhere, never by image name) and report the stall. Before finishing, list and stop every background command you started.
+
 ## 1. Validate the current story — with automated tests
 
 Story id = the story filename without `.md` (e.g. `07-login-page`).
@@ -42,17 +44,17 @@ Story id = the story filename without `.md` (e.g. `07-login-page`).
 3. Criteria suffixed `(manual)`: verify by hand against the running app (both languages for displayed text). Check the box only if fully met, and add a one-line note that it was verified manually.
 4. If the project has no e2e framework installed (conventions say `not present`): do not install one. Validate every criterion by hand as in step 3, and log the gap once (see Decision logging).
 5. Only validate functional behavior — code style and architecture review are not your responsibility.
-6. On a re-validation (the invocation says it is a retry after fixes): first re-run only the tests that failed last time. If any still fails, update its note, skip the full-suite run in section 2 — the story fails either way — and report; run the full suite only once they all pass.
+6. On a re-validation (the invocation says it is a retry after fixes): first re-run only the tests that failed last time. If any still fails, update its note, skip section 2 — the story fails either way — and report; run the rest of this story's tests only once they all pass.
 7. If the app can't start because a port is taken, use the environment overrides the e2e config already reads (conventions list them, e.g. `*_PORT`) or report it as an environment failure. Never add or change a Playwright config, the application, or another story's tests; a hook blocks every path outside the e2e folder, the story files and `.validated-stories/`.
 
 ## 2. Regression-test previously validated stories
 
 Do this whether or not the current story just passed — a change can pass its own criteria while still breaking something older.
 
-1. Run the FULL automated e2e suite (`e2e test` command from conventions). Every test from every previously validated story lives in `tests/e2e/`, so this run is the regression check — no re-testing older stories by hand.
+1. Never run the full e2e suite: run only this story's e2e tests (its `tests/e2e/<story-id>/` folder or tag) and the e2e test files you changed. product-manager's `gate.sh --full` runs the whole accumulated suite, older stories' tests included, right after you.
 2. For older stories in `.validated-stories/` that have `(manual)` criteria: re-check by hand only those whose story overlaps this one — its changed-file list (in its implementation sections) intersects this story's changed files, or `graphify query` shows this story's changes sit in its dependency chain. Skip the others and say so in your summary.
-3. If a previously passing test or manual criterion now fails: this is a regression. Uncheck the matching criterion in that older story's copy under `.validated-stories/` and add a note: what broke, which test, and that it appears related to the story you just processed. Never modify an older story's tests to make them pass. Do not touch that story's file inside `.user-stories/` if it's no longer there — `.validated-stories/` is its only record now.
-4. Treat any regression as an overall failure for this invocation, even if the current story's own criteria all passed — you're the only line of defense against silently shipping a broken older feature.
+3. If a previously passing test you ran or a manual criterion now fails: this is a regression. Uncheck the matching criterion in that older story's copy under `.validated-stories/` and add a note: what broke, which test, and that it appears related to the story you just processed. Never modify an older story's tests to make them pass. Do not touch that story's file inside `.user-stories/` if it's no longer there — `.validated-stories/` is its only record now.
+4. Treat any regression you found as an overall failure for this invocation, even if the current story's own criteria all passed.
 
 ## 3. Archive on a clean pass
 

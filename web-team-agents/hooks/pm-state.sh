@@ -11,8 +11,12 @@
 #                                  Check the analyst's Technical Plan layout (a Scope: line, only the fixed ### subsections,
 #                                  no e2e test file outside tests/e2e/<slug>/). Prints "PLAN ok scope=<..> visual=<yes|no>",
 #                                  or "PLAN invalid" and the problems with exit 2. --latest = the newest story file.
-#   append <story-file> "<## Heading>"
-#                                  Append a section (body on stdin) to the story file, so it never has to be read back.
+#   append <story-file> "<## Heading>"   (the body comes from STDIN: a heredoc or a pipe, never an argument)
+#                                  Append a section to the story file, so it never has to be read back. Example:
+#                                    bash .claude/hooks/pm-state.sh append .user-stories/01-x.md "## Notes" <<'EOF'
+#                                    the body
+#                                    EOF
+#                                  Refuses with "empty body on stdin" when the body is empty, and when stdin is a terminal.
 #   validated <story-file>         Save the story to .stories-reviewed/, report its acceptance-criteria boxes.
 #                                  Exit 0 = every box checked, 1 = some unchecked (listed on stdout).
 #   finish completed <story-file>  Move the story to .completed/ and write COMPLETED <slug> to the status file.
@@ -154,6 +158,7 @@ cmd_append () {
   require_story "${1:-}"
   local heading="${2:-}"
   case "$heading" in "## "*) ;; *) die "append needs a '## ' heading, got: ${heading:-<missing>}" ;; esac
+  [ ! -t 0 ] || die "append reads the body on stdin: pipe it or use a heredoc (pm-state.sh append <story> '## Heading' <<'EOF' ... EOF)"
   local body; body="$(cat)"
   [ -n "$(printf '%s' "$body" | tr -d '[:space:]')" ] || die "append: empty body on stdin"
   # One blank line before the new section, whatever the file ended with.
@@ -243,5 +248,5 @@ case "${1:-}" in
   finish)     cmd_finish "${2:-}" "${3:-}" ;;
   git-branch) shift; cmd_git_branch "$@" ;;
   git-stage)  cmd_git_stage "${2:-}" ;;
-  *) die "usage: pm-state.sh start | criteria <story> | plan-check <story>|--latest | append <story> '<## Heading>' | validated <story> | finish completed|failed <story> | git-branch <story> <repo>... | git-stage <repo>" ;;
+  *) die "usage: pm-state.sh start | criteria <story> | plan-check <story>|--latest | append <story> '<## Heading>' (body on stdin) | validated <story> | finish completed|failed <story> | git-branch <story> <repo>... | git-stage <repo>" ;;
 esac

@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/block-stdin-python.cjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

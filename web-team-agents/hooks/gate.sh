@@ -61,7 +61,8 @@ json_field () {
 # --- hook mode: read stdin JSON if piped ---------------------------------------------------
 AGENT_TYPE=""; GUARD_ID=""
 if [ ! -t 0 ]; then
-  INPUT="$(cat || true)"
+  # The harness closes a hook's stdin at once; a manual call with an open pipe must not wait on it forever.
+  if command -v timeout >/dev/null 2>&1; then INPUT="$(timeout 10 cat || true)"; else INPUT="$(cat || true)"; fi
   if [ -n "$INPUT" ]; then
     AGENT_TYPE="$(json_field agent_type)"
     # A subagent has an agent_id; an agent run as the session itself (claude --agent) only has its session_id.

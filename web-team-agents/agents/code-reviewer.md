@@ -26,6 +26,8 @@ A deterministic gate (lint, typecheck, build, unit tests) has already passed bef
 
 What web code most often gets wrong, so look for it: a stale async result overwriting newer state (no abort or cancelled flag), a double submit, money computed in floats or formatted by hand, a hardcoded user-facing string, a missing loading/empty/error state, a lost accessible name or keyboard path; on the server, a query not scoped to the current user, an entity bound straight from the request, a check-then-act outside a transaction, N+1 or unbounded queries, a missing `CancellationToken`, an exception message returned to the client.
 
+Running commands: every test, build, e2e, audit or scan command runs under `timeout <seconds>` (e.g. `timeout 900 npm test`), in the background (Bash `run_in_background`), with its output redirected to a file under `${TMPDIR:-/tmp}` that you read once it ends (`timeout 900 npm test > "${TMPDIR:-/tmp}/<name>.log" 2>&1 < /dev/null`). Never run a command that reads stdin (`python -`, `python3 -`, `node -`, a heredoc or here-string piped to an interpreter) and never chain `|| python3`: write a script file and run it with a timeout. If a run exceeds 20 minutes or prints nothing for 10 minutes, kill it by PID (`taskkill /F /T /PID <pid>` on Windows, `kill <pid>` elsewhere, never by image name) and report the stall. Before finishing, list and stop every background command you started.
+
 ## First pass
 
 When invoked by product-manager, on behalf of dev-frontend, dev-backend, or dev-integrator, with the files one of them changed for a story:

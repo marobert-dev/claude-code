@@ -29,6 +29,13 @@ Write-Host "    $($agentFiles.Count) agent files copied."
 Write-Host "    Restart Claude Code if $AgentsDir didn't already exist before this copy -"
 Write-Host "    a running session only picks up a brand-new agents directory after a restart."
 
+$UserHooksDir = if ($env:CLAUDE_USER_HOOKS_DIR) { $env:CLAUDE_USER_HOOKS_DIR } else { Join-Path $HOME ".claude\hooks" }
+Write-Host "==> Installing the user-level hook into $UserHooksDir"
+New-Item -ItemType Directory -Force -Path $UserHooksDir | Out-Null
+Copy-Item (Join-Path $ScriptDir "hooks\block-stdin-python.cjs") $UserHooksDir -Force
+Write-Host "    NOT auto-registered: merge $ScriptDir\hooks\user-settings.snippet.json into ~\.claude\settings.json by hand"
+Write-Host "    (PreToolUse, Bash|PowerShell). It refuses python/python3/py reading a script from stdin, which hangs on Windows."
+
 if ($Workspace) {
     Write-Host "==> Installing workspace helpers into $Workspace"
     New-Item -ItemType Directory -Force -Path (Join-Path $Workspace ".claude\hooks") | Out-Null
