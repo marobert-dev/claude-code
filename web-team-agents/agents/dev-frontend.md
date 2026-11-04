@@ -55,6 +55,8 @@ You own everything a user sees and interacts with — in the browser and in the 
 
 Command output: run tests, builds and e2e suites with the quietest reporter that still names each failure (e.g. Vitest `--reporter=dot`, Playwright `--reporter=line`, `dotnet test --logger "console;verbosity=minimal"`) and keep only the failing part of long output (`| tail -n 80`, or `grep` for the failure markers). Never paste full logs into your report.
 
+Running commands: every test, build, e2e, audit or scan command runs under `timeout <seconds>` (e.g. `timeout 900 npm test`), in the background (Bash `run_in_background`), with its output redirected to a file under `${TMPDIR:-/tmp}` that you read once it ends (`timeout 900 npm test > "${TMPDIR:-/tmp}/<name>.log" 2>&1 < /dev/null`). Never run a command that reads stdin (`python -`, `python3 -`, `node -`, a heredoc or here-string piped to an interpreter) and never chain `|| python3`: write a script file and run it with a timeout. If a run exceeds 20 minutes or prints nothing for 10 minutes, kill it by PID (`taskkill /F /T /PID <pid>` on Windows, `kill <pid>` elsewhere, never by image name) and report the stall. Before finishing, list and stop every background command you started.
+
 Whenever your change touches code with existing unit tests:
 
 1. Run only the test files you wrote or changed, with the test command from `.pipeline/conventions.md`; while fixing a failure, re-run only the failing test file, not the whole suite.

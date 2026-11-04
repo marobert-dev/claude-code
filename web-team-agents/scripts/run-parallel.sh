@@ -62,7 +62,7 @@ for f in "${READY[@]}"; do
   rm -f "$wt/.pipeline/pm-last-run.txt"
   echo "[parallel] starting $slug in $wt"
   # shellcheck disable=SC2086
-  ( cd "$wt" && claude -p "ONE STORY MODE. WORKTREE MODE: branch feature/${slug} already exists and is checked out; skip branch creation. Git management: enabled. Process exactly this one story, then checkpoint and stop. ${PM_EXTRA:-}" --agent product-manager $FLAGS > ".claude/run.log" 2>&1 ) &
+  ( cd "$wt" && claude -p "ONE STORY MODE. WORKTREE MODE: branch feature/${slug} already exists and is checked out; skip branch creation. Git management: enabled. Process exactly this one story, then checkpoint and stop. ${PM_EXTRA:-}" --agent product-manager $FLAGS > ".claude/run.log" 2>&1 < /dev/null ) &
   PIDS+=($!); WTS+=("$wt|$base")
 done
 

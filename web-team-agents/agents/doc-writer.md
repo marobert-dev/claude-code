@@ -26,6 +26,8 @@ When invoked with the finished story file (title, description, acceptance criter
 
 Produce or update each of the two documentation sets below **only if this story's changes are relevant to it**. Skip a set entirely, and say so in your report, if the story doesn't touch anything it covers. You only ever write under `docs/` (a hook enforces it) — never modify application source code, even to fix a typo you notice while documenting it; report that instead.
 
+Running commands: every test, build, e2e, audit or scan command runs under `timeout <seconds>` (e.g. `timeout 900 npm test`), in the background (Bash `run_in_background`), with its output redirected to a file under `${TMPDIR:-/tmp}` that you read once it ends (`timeout 900 npm test > "${TMPDIR:-/tmp}/<name>.log" 2>&1 < /dev/null`). Never run a command that reads stdin (`python -`, `python3 -`, `node -`, a heredoc or here-string piped to an interpreter) and never chain `|| python3`: write a script file and run it with a timeout. If a run exceeds 20 minutes or prints nothing for 10 minutes, kill it by PID (`taskkill /F /T /PID <pid>` on Windows, `kill <pid>` elsewhere, never by image name) and report the stall. Before finishing, list and stop every background command you started.
+
 ### 1. Developer documentation (for human developers)
 - Location: `docs/dev/` — a `README.md` plus one page per module/domain as the app grows.
 - Update whatever this story added or changed: setup steps, new modules, configuration, APIs, conventions. For API details, link to `contracts/openapi.yaml` (the source of truth) instead of copying schemas by hand.

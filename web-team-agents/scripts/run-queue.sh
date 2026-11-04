@@ -18,7 +18,7 @@ while [ "$i" -lt "$MAX" ]; do
   echo "[run-queue] session $((i+1))..."
   # shellcheck disable=SC2086
   claude -p "ONE STORY MODE. Process exactly the first story in .user-stories/, then checkpoint and stop. ${PM_EXTRA:-}" \
-    --agent product-manager $FLAGS
+    --agent product-manager $FLAGS < /dev/null
   RC=$?
   LAST="$(cat "$STATUS" 2>/dev/null || echo 'UNKNOWN')"
   echo "[run-queue] claude exit=$RC status='$LAST'"

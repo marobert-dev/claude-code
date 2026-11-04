@@ -22,6 +22,13 @@ echo "    $(ls "$SCRIPT_DIR"/agents/*.md | wc -l | tr -d ' ') agent files copied
 echo "    Restart Claude Code if $AGENTS_DIR didn't already exist before this copy —"
 echo "    a running session only picks up a brand-new agents directory after a restart."
 
+USER_HOOKS_DIR="${CLAUDE_USER_HOOKS_DIR:-$HOME/.claude/hooks}"
+echo "==> Installing the user-level hook into $USER_HOOKS_DIR"
+mkdir -p "$USER_HOOKS_DIR"
+cp "$SCRIPT_DIR/hooks/block-stdin-python.cjs" "$USER_HOOKS_DIR"/
+echo "    NOT auto-registered: merge $SCRIPT_DIR/hooks/user-settings.snippet.json into ~/.claude/settings.json by hand"
+echo "    (PreToolUse, Bash|PowerShell). It refuses python/python3/py reading a script from stdin, which hangs on Windows."
+
 HOOK_SCRIPTS="gate.sh pm-state.sh detect-conventions.sh role-guard.sh secret-scan.sh"
 
 WORKSPACE="${1:-}"

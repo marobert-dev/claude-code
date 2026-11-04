@@ -253,6 +253,9 @@ check "conventions with Project rules are present"     1 "$(bash .claude/hooks/p
 printf 'line one' > .user-stories/04-a.md
 bash .claude/hooks/pm-state.sh append .user-stories/04-a.md "## Integration Notes" <<< "- wired" >/dev/null
 check "append adds the section after a blank line" "line one||## Integration Notes||- wired" "$(paste -sd '|' .user-stories/04-a.md)"
+out="$(bash .claude/hooks/pm-state.sh append .user-stories/04-a.md "## Empty" < /dev/null 2>&1)"; rc=$?
+check "append with an empty body fails"            "2 1" "$rc $(printf '%s' "$out" | grep -c 'empty body on stdin')"
+check "the usage line says the body is on stdin"   1 "$(bash .claude/hooks/pm-state.sh nonsense 2>&1 | grep -c 'body on stdin')"
 rm -f .user-stories/*.md; mkdir -p .completed; touch .completed/01-a.md .completed/02-b.md .completed/03-c.md .completed/04-d.md .completed/05-e.md
 printf '# f\n' > .user-stories/06-f.md; printf '# g\n' > .user-stories/07-g.md
 out="$(bash .claude/hooks/pm-state.sh finish completed .user-stories/06-f.md)"
@@ -304,6 +307,11 @@ commit_gw "$GW"
 out="$(gate_in "$GW" GATE_NO_CACHE=1 --)"; rc=$?
 check "scoped gate passes with nothing changed" 0 "$rc"
 check "scoped gate says no package changed"     1 "$(printf '%s\n' "$out" | grep -c 'no changed package')"
+if command -v timeout >/dev/null 2>&1; then
+  started=$(date +%s)
+  ( cd "$GW" && env CLAUDE_PROJECT_DIR="$GW" GATE_NO_CACHE=1 timeout 60 bash "$HOOKS/gate.sh" < <(sleep 20) ) >/dev/null 2>&1; rc=$?
+  check "scoped gate does not wait on an open stdin" "0 1" "$rc $(( $(date +%s) - started < 18 ? 1 : 0 ))"
+fi
 echo y >> "$GW/pkg-ok/a.js"
 gate_in "$GW" GATE_NO_CACHE=1 -- >/dev/null; check "scoped gate skips an untouched package that would fail" 0 "$?"
 out="$(gate_in "$GW" GATE_NO_CACHE=1 -- --full)"; rc=$?
@@ -459,6 +467,46 @@ if command -v node >/dev/null 2>&1; then
 fi
 rm -f "$WIRE/.claude/hooks/gate.sh"
 check "no gate.sh: no hook line, only GATE missing"   "1 0" "$(wire | grep -c '^GATE missing') $(wire | grep -c '^GATE hook')"
+
+# --- block-stdin-python.cjs: no interpreter reading its script from stdin ----------------------------------------
+if command -v node >/dev/null 2>&1; then
+  stdin_python () {  # stdin_python <tool> <command>: exit code of the hook for that tool call
+    MSYS_NO_PATHCONV=1 T="$1" C="$2" jq -n '{hook_event_name:"PreToolUse", tool_name:$ENV.T, session_id:"s1", tool_input:{command:$ENV.C}}' \
+      | timeout 20 node "$HOOKS/block-stdin-python.cjs" >/dev/null 2>&1; echo $?
+  }
+  NL='
+'
+  check "python - is refused"                       2 "$(stdin_python Bash 'python -')"
+  check "python3 - is refused"                      2 "$(stdin_python Bash 'python3 -')"
+  check "py -3 - is refused"                        2 "$(stdin_python Bash 'py -3 -')"
+  check "python3.14.exe - is refused"               2 "$(stdin_python Bash 'C:/Python314/python3.14.exe -u -')"
+  check "heredoc to python3 - is refused"           2 "$(stdin_python Bash "python3 - <<'EOF'${NL}print(1)${NL}EOF")"
+  check "heredoc to bare python is refused"         2 "$(stdin_python Bash "python <<EOF${NL}print(1)${NL}EOF")"
+  check "here-string to python is refused"          2 "$(stdin_python Bash 'python3 <<< "print(1)"')"
+  check "pipe to python - is refused"               2 "$(stdin_python Bash 'cat a.py | python -')"
+  check "|| python3 - fallback is refused"          2 "$(stdin_python Bash "node x.js || python3 - <<EOF${NL}print(1)${NL}EOF")"
+  check "wrapped python - is refused"               2 "$(stdin_python Bash 'timeout 60 python3 -')"
+  check "python - inside bash -c is refused"        2 "$(stdin_python Bash 'bash -c "python3 -"')"
+  check "PowerShell here-string to python is refused" 2 "$(stdin_python PowerShell "@'${NL}print(1)${NL}'@ | python -")"
+  check "PowerShell pipe to python3 - is refused"   2 "$(stdin_python PowerShell '"print(1)" | python3 -')"
+  check "multi-line python -c is refused"           2 "$(stdin_python Bash "python -c \"import os${NL}print(1)\"")"
+  check "python script.py is allowed"               0 "$(stdin_python Bash 'python script.py')"
+  check "python -m is allowed"                      0 "$(stdin_python Bash 'python -m pytest -q')"
+  check "python3 -u script.py is allowed"           0 "$(stdin_python Bash 'timeout 60 python3 -u script.py 2>&1 | tail -n 20')"
+  check "script with its own heredoc is allowed"    0 "$(stdin_python Bash "python script.py <<EOF${NL}data${NL}EOF")"
+  check "one-line python -c is allowed"             0 "$(stdin_python Bash 'python -c "print(1)"')"
+  check "python --version is allowed"               0 "$(stdin_python Bash 'python3 --version')"
+  check "py -0 is allowed"                          0 "$(stdin_python PowerShell 'py -0')"
+  check "naming python is allowed"                  0 "$(stdin_python PowerShell 'Get-Command python, python3 | Format-List Source')"
+  check "which python is allowed"                   0 "$(stdin_python Bash 'which python')"
+  check "python - in a commit message is allowed"   0 "$(stdin_python Bash 'git commit -m "never run python -"')"
+  check "python - in a heredoc body is allowed"     0 "$(stdin_python Bash "cat <<EOF${NL}python -${NL}EOF")"
+  check "python - in a comment is allowed"          0 "$(stdin_python Bash "# no python -${NL}ls")"
+  check "other tools are ignored"                   0 "$(stdin_python Edit 'python -')"
+  check "unparsable input is let through"           0 "$(printf 'not json' | timeout 20 node "$HOOKS/block-stdin-python.cjs" >/dev/null 2>&1; echo $?)"
+else
+  echo "SKIP: node not found, block-stdin-python.cjs not tested"
+fi
 
 echo "hooks tests: $PASS passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]
