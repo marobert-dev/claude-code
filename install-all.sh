@@ -8,9 +8,11 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENTS_SRC="$REPO_ROOT/web-team-agents/agents"
 SKILLS_SRC="$REPO_ROOT/skills"
 RULES_SRC="$REPO_ROOT/rules"
+COMMANDS_SRC="$REPO_ROOT/commands"
 AGENTS_DST="$HOME/.claude/agents"
 SKILLS_DST="$HOME/.claude/skills"
 RULES_DST="$HOME/.claude/rules"
+COMMANDS_DST="$HOME/.claude/commands"
 WORKSPACE="${1:-.}"
 
 # Colors for output
@@ -53,6 +55,30 @@ for skill_dir in "$SKILLS_SRC"/*/; do
   SKILL_COUNT=$((SKILL_COUNT + 1))
 done
 echo -e "${GREEN}✓ Installed $SKILL_COUNT skills${NC}\n"
+
+echo -e "${BLUE}Installing commands...${NC}"
+if [ -n "$(find "$COMMANDS_SRC" -maxdepth 1 -name '*.md' -type f 2>/dev/null)" ]; then
+  mkdir -p "$COMMANDS_DST"
+  COMMAND_COUNT=0
+  for command_file in "$COMMANDS_SRC"/*.md; do
+    cp "$command_file" "$COMMANDS_DST/"
+    echo -e "  - /$(basename "$command_file" .md)"
+    COMMAND_COUNT=$((COMMAND_COUNT + 1))
+  done
+  echo -e "${GREEN}✓ Installed $COMMAND_COUNT commands${NC}\n"
+else
+  echo -e "${YELLOW}No commands found in $COMMANDS_SRC - skipped${NC}\n"
+fi
+
+# Learning memory: skill + /learn-review + SQLite database + SessionStart/SubagentStart/SessionEnd hooks
+if [ -f "$SKILLS_SRC/learning-memory/install.sh" ]; then
+  echo -e "${BLUE}Installing learning-memory (command, database, hooks)...${NC}"
+  if bash "$SKILLS_SRC/learning-memory/install.sh"; then
+    echo -e "${GREEN}✓ learning-memory installed (hooks merged into ~/.claude/settings.json)${NC}\n"
+  else
+    echo -e "${YELLOW}learning-memory install failed - see above (re-run: bash skills/learning-memory/install.sh)${NC}\n"
+  fi
+fi
 
 echo -e "${BLUE}Installing rules...${NC}"
 if [ -d "$RULES_SRC" ] && [ -n "$(find "$RULES_SRC" -name '*.md' -type f 2>/dev/null)" ]; then
@@ -97,6 +123,8 @@ echo -e "Location of installed components:"
 echo -e "  Agents:     ${GREEN}$AGENTS_DST${NC}"
 echo -e "  Skills:     ${GREEN}$SKILLS_DST${NC}"
 echo -e "  Rules:      ${GREEN}$RULES_DST${NC}"
+echo -e "  Commands:   ${GREEN}$COMMANDS_DST${NC} (/learn-review, /ship-feature)"
+echo -e "  Learnings:  ${GREEN}$HOME/.claude/learnings${NC}"
 
 if [ "$WORKSPACE" != "." ]; then
   echo -e "  Workspace:  ${GREEN}$WORKSPACE${NC}"
@@ -108,6 +136,7 @@ echo -e "  1. ${YELLOW}Restart Claude Code${NC} if ~/.claude/agents/, skills/ or
 echo -e "  2. ${YELLOW}Queue stories${NC}: ${BLUE}claude --agent product-owner${NC}"
 echo -e "  3. ${YELLOW}Process queue${NC}: ${BLUE}claude --agent product-manager${NC}"
 echo -e "  4. ${YELLOW}(Optional) Enable Graphify${NC}: ${BLUE}bash scripts/enable-graphify.sh --backup${NC}"
+echo -e "  5. ${YELLOW}Review learnings${NC} after a few sessions: ${BLUE}/learn-review${NC}"
 echo ""
 echo -e "For SSH setup, see: https://claude.ai/artifact/Y2ncJTckHk8Bdpt2FuoPgv"
 echo ""

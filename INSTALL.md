@@ -36,6 +36,7 @@ bash install-all.sh /path/to/your/project
 - **Location:** `~/.claude/skills/<skill-name>/`
 - Skills included:
   - **enable-graphify** — optionally inject Graphify support into agents for code dependency analysis. Not active until you run `enable-graphify.sh` or `enable-graphify.ps1`
+  - **learning-memory** — cross-session learnings database: captures corrections, answers and decisions at the end of each session, then reloads the approved ones (global + current project) at `SessionStart` and into every subagent. See [Learning memory](#learning-memory-cross-session-learnings)
 
 ### Rules (global, loaded in every session)
 - **Source:** every `.md` file under `rules/` (subfolders included)
@@ -86,7 +87,11 @@ ls ~/.claude/agents/ | wc -l
 
 # Check skills installed
 ls ~/.claude/skills/
-# Should list: enable-graphify
+# Should list: enable-graphify, learning-memory
+
+# Check the commands (/learn-review, /ship-feature)
+ls ~/.claude/commands/
+# Should list: learn-review.md, ship-feature.md
 
 # Check rules installed
 ls ~/.claude/rules/
@@ -94,6 +99,31 @@ ls ~/.claude/rules/
 ```
 
 In a Claude Code session, run `/context` and confirm `programmer-mindset.md` appears under **Memory files**.
+
+## Learning memory (cross-session learnings)
+
+Installed automatically by `install-all` (or alone: `bash skills/learning-memory/install.sh`, `.\skills\learning-memory\install.ps1`).
+
+What it adds:
+- `~/.claude/skills/learning-memory/` — the skill, the analyzer prompt and `scripts/learn.py` (Python 3.9+, stdlib only, run through Git Bash by `scripts/run.sh`).
+- `~/.claude/commands/learn-review.md` — the `/learn-review` command (report, approve / edit / reject / defer / scope, then a diff-confirmed CLAUDE.md update).
+- `~/.claude/learnings/learnings.db` — one SQLite database: learnings separated per project (key = git `origin` URL, else folder path) plus a global scope.
+- Three hooks merged into `~/.claude/settings.json` (backup in `~/.claude/learnings/backups/`): `SessionStart` and `SubagentStart` inject approved learnings, `SessionEnd` queues the finished session for a background `claude -p` analysis (model `sonnet`).
+
+Nothing is loaded or written to a CLAUDE.md before you approve it in `/learn-review`.
+
+```bash
+bash skills/learning-memory/install.sh --no-hooks    # files + database only, settings.json untouched
+bash skills/learning-memory/install.sh --dry-run     # show the hooks that would be registered
+bash skills/learning-memory/install.sh --uninstall   # remove hooks, command and skill (database kept)
+bash ~/.claude/skills/learning-memory/scripts/run.sh status   # queue, failures, model
+bash ~/.claude/skills/learning-memory/scripts/run.sh ui --open   # read-only web view of the database (charts, filters, table); Ctrl+C to stop
+bash ~/.claude/skills/learning-memory/scripts/run.sh ui --out ~/learnings.html   # same view as one offline HTML file
+bash ~/.claude/skills/learning-memory/scripts/run.sh export --out ~/learnings-export   # global.md + projects/*.md + INDEX.md
+bash ~/.claude/skills/learning-memory/scripts/run.sh import ~/learnings-export [--dry-run]       # restore into an empty (or any) database
+```
+
+Requirements: `claude` on PATH (background analysis), Git Bash on Windows (hooks run through it), Python 3.9+. Config: `~/.claude/learnings/config.json` (`model`, `auto_analyze`, budgets). Logs: `~/.claude/learnings/analyzer.log`.
 
 ## Next: Set Up Your Project
 
@@ -194,6 +224,10 @@ Install [Git for Windows](https://git-scm.com/download/win) which includes Git B
   skills/                          # Skills (loaded on demand)
     enable-graphify/
       SKILL.md
+    learning-memory/
+      SKILL.md
+      scripts/ (learn.py, run.sh)
+      prompts/extract.md
 
   rules/                           # Rules (loaded in every session)
     programmer-mindset.md

@@ -10,9 +10,11 @@ $RepoRoot = Split-Path -Parent $PSCommandPath
 $AgentsSrc = Join-Path $RepoRoot "web-team-agents\agents"
 $SkillsSrc = Join-Path $RepoRoot "skills"
 $RulesSrc = Join-Path $RepoRoot "rules"
+$CommandsSrc = Join-Path $RepoRoot "commands"
 $AgentsDst = Join-Path $env:USERPROFILE ".claude\agents"
 $SkillsDst = Join-Path $env:USERPROFILE ".claude\skills"
 $RulesDst = Join-Path $env:USERPROFILE ".claude\rules"
+$CommandsDst = Join-Path $env:USERPROFILE ".claude\commands"
 
 # Colors for output
 function Write-Info {
@@ -79,6 +81,39 @@ Get-ChildItem $SkillsSrc -Directory | Where-Object { Test-Path (Join-Path $_.Ful
 Write-Success "Installed $SkillCount skills"
 Write-Host ""
 
+# Install commands (slash commands, one .md file each)
+Write-Info "Installing commands..."
+$CommandFiles = @()
+if (Test-Path $CommandsSrc) {
+    $CommandFiles = @(Get-ChildItem $CommandsSrc -Filter *.md -File)
+}
+if ($CommandFiles.Count -gt 0) {
+    if (-not (Test-Path $CommandsDst)) {
+        New-Item -ItemType Directory -Path $CommandsDst -Force | Out-Null
+    }
+    foreach ($CommandFile in $CommandFiles) {
+        Copy-Item $CommandFile.FullName $CommandsDst -Force
+        Write-Host "  - /$($CommandFile.BaseName)"
+    }
+    Write-Success "Installed $($CommandFiles.Count) commands"
+} else {
+    Write-Host "No commands found in $CommandsSrc - skipped" -ForegroundColor Yellow
+}
+Write-Host ""
+
+# Learning memory: skill + /learn-review + SQLite database + SessionStart/SubagentStart/SessionEnd hooks
+$LearningInstaller = Join-Path $SkillsSrc "learning-memory\install.ps1"
+if (Test-Path $LearningInstaller) {
+    Write-Info "Installing learning-memory (command, database, hooks)..."
+    try {
+        & $LearningInstaller
+        Write-Success "learning-memory installed (hooks merged into ~\.claude\settings.json)"
+    } catch {
+        Write-Error-Custom "learning-memory install failed: $($_.Exception.Message) (re-run: .\skills\learning-memory\install.ps1)"
+    }
+    Write-Host ""
+}
+
 # Install rules (loaded automatically by Claude Code in every session)
 Write-Info "Installing rules..."
 $RuleFiles = @()
@@ -141,6 +176,8 @@ Write-Host "Location of installed components:"
 Write-Host "  Agents:     $AgentsDst" -ForegroundColor Green
 Write-Host "  Skills:     $SkillsDst" -ForegroundColor Green
 Write-Host "  Rules:      $RulesDst" -ForegroundColor Green
+Write-Host "  Commands:   $CommandsDst (/learn-review, /ship-feature)" -ForegroundColor Green
+Write-Host "  Learnings:  $env:USERPROFILE\.claude\learnings" -ForegroundColor Green
 
 if ($Workspace -ne ".") {
     Write-Host "  Workspace:  $Workspace" -ForegroundColor Green
@@ -152,6 +189,7 @@ Write-Host "  1. Restart Claude Code if ~/.claude/agents/, skills/ or rules/ was
 Write-Host "  2. Queue stories:     claude --agent product-owner"
 Write-Host "  3. Process queue:     claude --agent product-manager"
 Write-Host "  4. (Optional) Enable Graphify:  .\scripts\enable-graphify.ps1 -Backup"
+Write-Host "  5. Review learnings after a few sessions:  /learn-review"
 Write-Host ""
 Write-Host "For SSH setup, see: https://claude.ai/artifact/Y2ncJTckHk8Bdpt2FuoPgv" -ForegroundColor Cyan
 Write-Host ""
