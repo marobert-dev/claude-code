@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Learning memory</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb;
+  --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --base: #c3c2b7; --border: rgba(11,11,11,0.10);
+  --wash: rgba(11,11,11,0.05);
+  --s-approved: #2a78d6; --s-pending: #eb6834; --s-deferred: #1baf7a;
+  --s-superseded: #eda100; --s-rejected: #e87ba4;
+  --bar-neutral: #898781; --critical: #d03b3b; --focus: #2a78d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19;
+    --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --base: #383835; --border: rgba(255,255,255,0.10);
+    --wash: rgba(255,255,255,0.06);
+    --s-approved: #3987e5; --s-pending: #d95926; --s-deferred: #199e70;
+    --s-superseded: #c98500; --s-rejected: #d55181;
+    --focus: #3987e5;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19;
+  --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --base: #383835; --border: rgba(255,255,255,0.10);
+  --wash: rgba(255,255,255,0.06);
+  --s-approved: #3987e5; --s-pending: #d95926; --s-deferred: #199e70;
+  --s-superseded: #c98500; --s-rejected: #d55181;
+  --focus: #3987e5;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+body.loading main { opacity: .6; transition: opacity .15s; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 48px; }
+header.top { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; }
+h1 { font-size: 20px; font-weight: 650; margin: 0 0 2px; letter-spacing: -0.01em; }
+.sub { color: var(--ink2); font-size: 12.5px; overflow-wrap: anywhere; }
+.actions { display: flex; gap: 8px; }
+button, select, input { font: inherit; color: inherit; }
+.btn {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 12px; cursor: pointer; line-height: 1.2;
+}
+.btn:hover { background: var(--wash); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+.filters select, .filters input[type=search] {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; min-width: 0;
+}
+.filters input[type=search] { flex: 1 1 180px; max-width: 280px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; cursor: pointer;
+}
+.chip[aria-pressed="false"] { opacity: .5; }
+.chip:hover { background: var(--wash); }
+.chip .cnt { font-weight: 600; font-variant-numeric: tabular-nums; }
+.key { width: 10px; height: 10px; border-radius: 2px; flex: none; display: inline-block; }
+.sep { width: 1px; align-self: stretch; background: var(--grid); margin: 0 4px; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+.card h2 { font-size: 13px; font-weight: 650; margin: 0 0 2px; }
+.card .hint { color: var(--ink2); font-size: 12px; margin: 0 0 12px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.tile .label { color: var(--ink2); font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
+.tile .value { font-size: 28px; font-weight: 600; line-height: 1.15; margin-top: 4px; }
+.tile .note { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-bottom: 12px; }
+.grid3 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-bottom: 12px; }
+@media (max-width: 860px) { .grid2, .grid3 { grid-template-columns: minmax(0, 1fr); } }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 12px; padding: 0; list-style: none; color: var(--ink2); font-size: 12.5px; }
+.legend li { display: inline-flex; align-items: center; gap: 6px; }
+.legend b { color: var(--ink); font-weight: 600; }
+
+/* horizontal stacked bars */
+.hrow { display: grid; grid-template-columns: minmax(70px, 150px) minmax(0, 1fr) 36px; gap: 10px; align-items: center; min-height: 30px; }
+.hlabel { color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.htrack { display: flex; gap: 2px; height: 18px; align-items: stretch; border-left: 1px solid var(--base); min-width: 0; }
+.seg { flex: 0 0 auto; min-width: 3px; }
+.seg.end { border-radius: 0 4px 4px 0; }
+.seg:hover, .seg:focus-visible { filter: brightness(1.12); }
+.htotal { color: var(--ink2); font-variant-numeric: tabular-nums; }
+.neutral .seg { background: var(--bar-neutral); }
+
+/* weekly columns */
+.wk { display: grid; grid-template-columns: 34px minmax(0, 1fr); }
+.yaxis { position: relative; }
+.yaxis span { position: absolute; right: 8px; transform: translateY(50%); color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.plot { position: relative; }
+.gl { position: absolute; left: 0; right: 0; height: 1px; background: var(--grid); }
+.gl.zero { background: var(--base); }
+.cols { position: absolute; left: 0; right: 0; top: 0; display: flex; gap: 8px; align-items: flex-end; padding-left: 4px; }
+.col { flex: 0 1 24px; min-width: 6px; position: relative; display: flex; flex-direction: column-reverse; gap: 2px; }
+.col .seg { width: 100%; min-width: 0; }
+.col .seg.end { border-radius: 4px 4px 0 0; }
+.xl { position: absolute; top: 100%; margin-top: 6px; left: 50%; transform: translateX(-50%); color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+.axisnote { color: var(--muted); font-size: 11.5px; margin-top: 4px; }
+
+details.tv { margin-top: 10px; color: var(--ink2); font-size: 12.5px; }
+details.tv summary { cursor: pointer; }
+details.tv .scroll { overflow-x: auto; margin-top: 6px; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+th { color: var(--ink2); font-weight: 600; font-size: 12px; white-space: nowrap; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.tscroll { overflow-x: auto; }
+.lt th button { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; color: inherit; font-weight: 600; }
+.lt th button:hover { color: var(--ink); }
+.lt td.id { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lt .rowbtn { background: none; border: 0; padding: 0; text-align: left; cursor: pointer; width: 100%; color: var(--ink); }
+.lt .clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.lt tr.open .clamp { display: block; }
+.stat { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.detail { background: var(--wash); }
+.detail dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; margin: 0; }
+.detail dt { color: var(--ink2); }
+.detail dd { margin: 0; overflow-wrap: anywhere; }
+.more { margin-top: 10px; }
+.empty { color: var(--ink2); padding: 18px 4px; }
+.fail { color: var(--critical); font-weight: 600; }
+@media (max-width: 640px) { .hide-sm { display: none; } .tile .value { font-size: 24px; } }
+
+#tip {
+  position: fixed; z-index: 10; pointer-events: none; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; box-shadow: 0 4px 14px rgba(0,0,0,.14);
+  font-size: 12.5px; max-width: 260px; display: none;
+}
+#tip .row { display: flex; align-items: center; gap: 8px; }
+#tip .line { width: 10px; height: 3px; border-radius: 2px; flex: none; }
+#tip .v { font-weight: 650; font-size: 14px; }
+#tip .l { color: var(--ink2); }
+#tip .s { color: var(--muted); margin-top: 2px; }
+.srcnote { color: var(--muted); font-size: 12px; margin-top: 18px; }
+code { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--wash); padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Learning memory</h1>
+      <div class="sub" id="meta">Loading…</div>
+    </div>
+    <div class="actions">
+      <button class="btn" id="refresh" type="button">Refresh</button>
+      <button class="btn" id="theme" type="button" aria-label="Switch theme">Theme: auto</button>
+    </div>
+  </header>
+  <main id="app" aria-live="polite"></main>
+  <p class="srcnote">Read-only view. Approve, edit or forget learnings with <code>/learn-review</code>.</p>
+</div>
+<div id="tip" role="tooltip"></div>
+<script id="boot" type="application/json">{"mode":"static","data":null}</script>
+<script>
+(function () {
+'use strict';
+var STATUSES = ['approved', 'pending', 'deferred', 'superseded', 'rejected'];
+var STATUS_LABEL = { approved: 'Approved', pending: 'Pending', deferred: 'Deferred', superseded: 'Superseded', rejected: 'Rejected' };
+var KINDS = ['rule', 'decision', 'pitfall', 'preference'];
+var SOURCES = ['correction', 'question', 'error', 'decision', 'manual'];
+var CONF_RANK = { high: 3, medium: 2, low: 1 };
+var CONFS = ['high', 'medium', 'low'];
+var SESSION_STATES = ['done', 'queued', 'analyzing', 'failed', 'skipped'];
+var boot = JSON.parse(document.getElementById('boot').textContent);
+var app = document.getElementById('app');
+var tip = document.getElementById('tip');
+var DATA = null;
+var afterLayout = [];
+var S = { project: 'all', statuses: new Set(STATUSES), kind: 'all', conf: 'all', q: '', sortKey: 'id', sortDir: -1, limit: 100, open: new Set() };
+
+function el(tag, props) {
+  var e = document.createElement(tag);
+  if (props) Object.keys(props).forEach(function (k) {
+    var v = props[k];
+    if (v === false || v == null) return;
+    if (k === 'class') e.className = v;
+    else if (k === 'text') e.textContent = v;
+    else if (k === 'style') e.setAttribute('style', v);
+    else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), v);
+    else if (v === true) e.setAttribute(k, '');
+    else e.setAttribute(k, v);
+  });
+  for (var i = 2; i < arguments.length; i++) append(e, arguments[i]);
+  return e;
+}
+function append(parent, kid) {
+  if (kid == null || kid === false) return;
+  if (Array.isArray(kid)) { kid.forEach(function (k) { append(parent, k); }); return; }
+  parent.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+}
+function statusVar(s) { return 'var(--s-' + s + ')'; }
+function key(s) { return el('span', { class: 'key', style: 'background:' + statusVar(s) }); }
+function fmtDate(t) {
+  if (!t) return '-';
+  var d = new Date(t * 1000), opts = { month: 'short', day: 'numeric' };
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+  return d.toLocaleDateString(undefined, opts);
+}
+function fmtDateTime(t) { return t ? new Date(t * 1000).toLocaleString() : '-'; }
+function count(rows, f) { var m = {}; rows.forEach(function (r) { var k = f(r); m[k] = (m[k] || 0) + 1; }); return m; }
+function pkey(r) { return r.scope === 'global' ? '__global__' : 'p:' + r.project_key; }
+function plabel(r) { return r.scope === 'global' ? 'Global' : (r.project || r.project_key || '?'); }
+
+/* ---------- tooltip ---------- */
+function placeTip(x, y) {
+  var w = tip.offsetWidth, h = tip.offsetHeight;
+  var nx = Math.min(x + 14, window.innerWidth - w - 8), ny = y + 14;
+  if (ny + h > window.innerHeight - 8) ny = y - h - 14;
+  tip.style.left = Math.max(8, nx) + 'px';
+  tip.style.top = Math.max(8, ny) + 'px';
+}
+function showTip(lines, x, y) {
+  tip.textContent = '';
+  lines.forEach(function (ln) {
+    if (ln.sub) { tip.append(el('div', { class: 's', text: ln.sub })); return; }
+    tip.append(el('div', { class: 'row' },
+      ln.color ? el('span', { class: 'line', style: 'background:' + ln.color }) : null,
+      el('span', { class: 'v', text: String(ln.value) }),
+      el('span', { class: 'l', text: ln.label })));
+  });
+  tip.style.display = 'block';
+  placeTip(x, y);
+}
+function hideTip() { tip.style.display = 'none'; }
+function bindTip(node, linesFn, name) {
+  node.setAttribute('tabindex', '0');
+  node.setAttribute('role', 'img');
+  node.setAttribute('aria-label', name);
+  node.addEventListener('pointermove', function (e) { showTip(linesFn(), e.clientX, e.clientY); });
+  node.addEventListener('pointerleave', hideTip);
+  node.addEventListener('focus', function () { var r = node.getBoundingClientRect(); showTip(linesFn(), r.left + r.width / 2, r.bottom); });
+  node.addEventListener('blur', hideTip);
+}
+
+/* ---------- filters ---------- */
+function filtered(ignoreStatus) {
+  var q = S.q.trim().toLowerCase();
+  return DATA.learnings.filter(function (r) {
+    if (S.project === '__global__' && r.scope !== 'global') return false;
+    if (S.project.indexOf('p:') === 0 && pkey(r) !== S.project) return false;
+    if (!ignoreStatus && !S.statuses.has(r.status)) return false;
+    if (S.kind !== 'all' && r.kind !== S.kind) return false;
+    if (S.conf !== 'all' && r.confidence !== S.conf) return false;
+    if (q && (r.text + ' ' + r.rationale + ' ' + r.evidence + ' ' + plabel(r)).toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  });
+}
+function projectOptions() {
+  var seen = new Map();
+  DATA.projects.forEach(function (p) { seen.set('p:' + p.key, p); });
+  var opts = [['all', 'All projects + global'], ['__global__', 'Global only']];
+  Array.from(seen.entries()).sort(function (a, b) { return a[1].name.localeCompare(b[1].name); })
+    .forEach(function (e) { opts.push([e[0], e[1].name]); });
+  return opts;
+}
+function filterBar() {
+  var projSel = el('select', { 'aria-label': 'Project', onchange: function () { S.project = projSel.value; S.limit = 100; renderBody(); } });
+  projectOptions().forEach(function (o) { projSel.append(el('option', { value: o[0], text: o[1], selected: o[0] === S.project })); });
+  var kindSel = el('select', { 'aria-label': 'Kind', onchange: function () { S.kind = kindSel.value; S.limit = 100; renderBody(); } },
+    el('option', { value: 'all', text: 'All kinds' }),
+    KINDS.map(function (k) { return el('option', { value: k, text: k, selected: k === S.kind }); }));
+  var confSel = el('select', { 'aria-label': 'Confidence', onchange: function () { S.conf = confSel.value; S.limit = 100; renderBody(); } },
+    el('option', { value: 'all', text: 'Any confidence' }),
+    CONFS.map(function (k) { return el('option', { value: k, text: k, selected: k === S.conf }); }));
+  var search = el('input', { type: 'search', placeholder: 'Search text, evidence…', 'aria-label': 'Search', value: S.q,
+    oninput: function () { S.q = search.value; S.limit = 100; renderBody(); } });
+  var chips = STATUSES.map(function (s) {
+    var b = el('button', { type: 'button', class: 'chip', 'aria-pressed': String(S.statuses.has(s)), 'data-status': s,
+      onclick: function () {
+        if (S.statuses.has(s)) S.statuses.delete(s); else S.statuses.add(s);
+        b.setAttribute('aria-pressed', String(S.statuses.has(s))); S.limit = 100; renderBody();
+      } }, key(s), STATUS_LABEL[s], el('b', { class: 'cnt', text: '' }));
+    return b;
+  });
+  var reset = el('button', { type: 'button', class: 'btn', text: 'Reset', onclick: function () {
+    S.project = 'all'; S.statuses = new Set(STATUSES); S.kind = 'all'; S.conf = 'all'; S.q = ''; S.limit = 100; render();
+  } });
+  return el('div', { class: 'filters', role: 'group', 'aria-label': 'Filters' }, projSel, chips, el('span', { class: 'sep' }), kindSel, confSel, search, reset);
+}
+
+/* ---------- widgets ---------- */
+function tiles(rows) {
+  var c = count(rows, function (r) { return r.status; });
+  var nProj = new Set(rows.filter(function (r) { return r.scope === 'project'; }).map(function (r) { return r.project_key; })).size;
+  function tile(label, value, note, k) {
+    return el('div', { class: 'card tile' }, el('div', { class: 'label' }, k ? key(k) : null, label),
+      el('div', { class: 'value', text: String(value) }), note ? el('div', { class: 'note', text: note }) : null);
+  }
+  return el('div', { class: 'tiles' },
+    tile('Approved', c.approved || 0, 'loaded into sessions', 'approved'),
+    tile('Pending', c.pending || 0, c.pending ? 'waiting for /learn-review' : 'nothing to review', 'pending'),
+    tile('Deferred', c.deferred || 0, 'review later', 'deferred'),
+    tile('Retired', (c.superseded || 0) + (c.rejected || 0), (c.superseded || 0) + ' superseded, ' + (c.rejected || 0) + ' rejected', null),
+    tile('Projects', nProj, 'with at least one learning', null));
+}
+function matrixTable(head, body) {
+  return el('details', { class: 'tv' }, el('summary', { text: 'Table view' }),
+    el('div', { class: 'scroll' }, el('table', null,
+      el('thead', null, el('tr', null, head.map(function (h, i) { return el('th', { class: i ? 'num' : '', text: h }); }))),
+      el('tbody', null, body.map(function (r) { return el('tr', null, r.map(function (c, i) { return el('td', { class: i ? 'num' : '', text: String(c) }); })); })))));
+}
+
+function projectChart(rows) {
+  var groups = new Map();
+  rows.forEach(function (r) {
+    var k = pkey(r);
+    if (!groups.has(k)) groups.set(k, { label: plabel(r), counts: {}, total: 0, global: r.scope === 'global' });
+    var g = groups.get(k); g.counts[r.status] = (g.counts[r.status] || 0) + 1; g.total++;
+  });
+  var list = Array.from(groups.values()).sort(function (a, b) {
+    if (a.global !== b.global) return a.global ? -1 : 1;
+    return b.total - a.total || a.label.localeCompare(b.label);
+  });
+  var card = el('section', { class: 'card' }, el('h2', { text: 'Learnings per project' }),
+    el('p', { class: 'hint', text: 'Global learnings apply everywhere; each project has its own set. Bar colors are statuses.' }));
+  if (!list.length) { card.append(el('div', { class: 'empty', text: 'No learnings match the filters.' })); return card; }
+  var max = Math.max.apply(null, list.map(function (g) { return g.total; }));
+  var box = el('div', null);
+  list.forEach(function (g) {
+    var present = STATUSES.filter(function (s) { return g.counts[s]; });
+    var track = el('div', { class: 'htrack' });
+    present.forEach(function (s, i) {
+      var seg = el('div', { class: 'seg' + (i === present.length - 1 ? ' end' : ''),
+        style: 'background:' + statusVar(s) + ';width:calc((100% - 8px) * ' + (g.counts[s] / max).toFixed(5) + ')' });
+      bindTip(seg, function () { return [{ color: statusVar(s), value: g.counts[s], label: STATUS_LABEL[s].toLowerCase() }, { sub: g.label + ' · ' + g.total + ' total' }]; },
+        g.label + ', ' + s + ': ' + g.counts[s]);
+      track.append(seg);
+    });
+    box.append(el('div', { class: 'hrow' }, el('div', { class: 'hlabel', title: g.label, text: g.label }), track, el('div', { class: 'htotal', text: String(g.total) })));
+  });
+  card.append(box, matrixTable(['Project'].concat(STATUSES.map(function (s) { return STATUS_LABEL[s]; }), ['Total']),
+    list.map(function (g) { return [g.label].concat(STATUSES.map(function (s) { return g.counts[s] || 0; }), [g.total]); })));
+  return card;
+}
+
+function niceTicks(max) {
+  if (max <= 0) return [0, 1];
+  var pow = Math.pow(10, Math.floor(Math.log10(max))), best = null;
+  [1, 2, 5, 10].some(function (m) { var step = m * pow; if (Math.ceil(max / step) <= 4) { best = step; return true; } return false; });
+  var top = Math.ceil(max / best) * best, t = [];
+  for (var v = 0; v <= top + 1e-9; v += best) t.push(Math.round(v * 1000) / 1000);
+  return t;
+}
+function weekStart(ts) {
+  var d = new Date(ts * 1000); d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d.getTime();
+}
+function weeklyChart(rows) {
+  var card = el('section', { class: 'card' }, el('h2', { text: 'Learnings captured per week' }),
+    el('p', { class: 'hint', text: 'Counts by creation week (weeks start on Monday), colored by current status.' }));
+  if (!rows.length) { card.append(el('div', { class: 'empty', text: 'No learnings match the filters.' })); return card; }
+  var WEEK = 7 * 86400000, H = 160, LABEL_H = 24;
+  var first = Math.min.apply(null, rows.map(function (r) { return weekStart(r.created_at); }));
+  var last = Math.max(weekStart(Date.now() / 1000), Math.max.apply(null, rows.map(function (r) { return weekStart(r.created_at); })));
+  var buckets = [], truncated = false;
+  for (var t = first; t <= last; t += WEEK) buckets.push({ start: t, counts: {}, total: 0 });
+  if (buckets.length > 26) { buckets = buckets.slice(-26); truncated = true; }
+  var idx = new Map(buckets.map(function (b, i) { return [b.start, i]; }));
+  rows.forEach(function (r) {
+    var i = idx.get(weekStart(r.created_at));
+    if (i == null) return;
+    var b = buckets[i]; b.counts[r.status] = (b.counts[r.status] || 0) + 1; b.total++;
+  });
+  var ticks = niceTicks(Math.max.apply(null, buckets.map(function (b) { return b.total; })));
+  var top = ticks[ticks.length - 1];
+  var yaxis = el('div', { class: 'yaxis', style: 'height:' + (H + LABEL_H) + 'px' });
+  var plot = el('div', { class: 'plot', style: 'height:' + (H + LABEL_H) + 'px' });
+  ticks.forEach(function (v) {
+    var bottom = LABEL_H + (v / top) * H;
+    yaxis.append(el('span', { style: 'bottom:' + bottom + 'px', text: String(v) }));
+    plot.append(el('div', { class: 'gl' + (v === 0 ? ' zero' : ''), style: 'bottom:' + bottom + 'px' }));
+  });
+  var cols = el('div', { class: 'cols', style: 'height:' + H + 'px' });
+  buckets.forEach(function (b, i) {
+    var present = STATUSES.filter(function (s) { return b.counts[s]; });
+    var col = el('div', { class: 'col' });
+    present.forEach(function (s, j) {
+      var seg = el('div', { class: 'seg' + (j === present.length - 1 ? ' end' : ''),
+        style: 'background:' + statusVar(s) + ';height:' + Math.max(3, (b.counts[s] / top) * H) + 'px' });
+      var wk = 'Week of ' + new Date(b.start).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      bindTip(seg, function () { return [{ color: statusVar(s), value: b.counts[s], label: STATUS_LABEL[s].toLowerCase() }, { sub: wk + ' · ' + b.total + ' total' }]; },
+        wk + ', ' + s + ': ' + b.counts[s]);
+      col.append(seg);
+    });
+    col.append(el('span', { class: 'xl', text: new Date(b.start).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) }));
+    cols.append(col);
+  });
+  afterLayout.push(function () {
+    var labels = Array.prototype.slice.call(cols.querySelectorAll('.xl')).reverse(), edge = Infinity;
+    labels.forEach(function (l) {
+      var r = l.getBoundingClientRect();
+      if (r.right > edge - 10) { l.style.display = 'none'; } else { edge = r.left; }
+    });
+  });
+  plot.append(cols);
+  card.append(el('div', { class: 'wk' }, yaxis, plot));
+  if (truncated) card.append(el('div', { class: 'axisnote', text: 'Showing the last 26 weeks.' }));
+  card.append(matrixTable(['Week of'].concat(STATUSES.map(function (s) { return STATUS_LABEL[s]; }), ['Total']),
+    buckets.map(function (b) { return [new Date(b.start).toLocaleDateString()].concat(STATUSES.map(function (s) { return b.counts[s] || 0; }), [b.total]); })));
+  return card;
+}
+
+function miniBars(title, hint, counts, order) {
+  var card = el('section', { class: 'card' }, el('h2', { text: title }), el('p', { class: 'hint', text: hint }));
+  var items = order.filter(function (k) { return counts[k]; });
+  var max = Math.max.apply(null, [1].concat(items.map(function (k) { return counts[k]; })));
+  if (!items.length) { card.append(el('div', { class: 'empty', text: 'No data.' })); return card; }
+  var box = el('div', { class: 'neutral' });
+  items.forEach(function (k) {
+    var seg = el('div', { class: 'seg end', style: 'width:' + (counts[k] / max * 100).toFixed(2) + '%' });
+    bindTip(seg, function () { return [{ color: 'var(--bar-neutral)', value: counts[k], label: k }]; }, k + ': ' + counts[k]);
+    box.append(el('div', { class: 'hrow' }, el('div', { class: 'hlabel', text: k }), el('div', { class: 'htrack' }, seg), el('div', { class: 'htotal', text: String(counts[k]) })));
+  });
+  card.append(box);
+  return card;
+}
+
+function sessionsCard() {
+  var ses = DATA.sessions || { counts: {}, recent: [] };
+  var card = el('section', { class: 'card' }, el('h2', { text: 'Analysis queue' }),
+    el('p', { class: 'hint', text: 'Sessions captured at SessionEnd and analysed in the background.' }));
+  var total = SESSION_STATES.reduce(function (n, s) { return n + (ses.counts[s] || 0); }, 0);
+  if (!total) { card.append(el('div', { class: 'empty', text: 'No session captured yet.' })); return card; }
+  card.append(el('ul', { class: 'legend' }, SESSION_STATES.map(function (s) {
+    var n = ses.counts[s] || 0;
+    return el('li', { class: s === 'failed' && n ? 'fail' : null }, s === 'failed' && n ? '✕ ' : null, s, ' ', el('b', { text: String(n) }));
+  })));
+  var failed = ses.recent.filter(function (r) { return r.status === 'failed'; });
+  var rows = ses.recent.slice(0, 8);
+  card.append(el('div', { class: 'tscroll' }, el('table', null,
+    el('thead', null, el('tr', null, ['Updated', 'Project', 'Status', 'Found', 'Note'].map(function (h, i) { return el('th', { class: i === 3 ? 'num' : '', text: h }); }))),
+    el('tbody', null, rows.map(function (r) {
+      return el('tr', null, el('td', { text: fmtDateTime(r.updated_at) }), el('td', { text: r.project || '-' }),
+        el('td', { class: r.status === 'failed' ? 'fail' : null, text: (r.status === 'failed' ? '✕ ' : '') + r.status }),
+        el('td', { class: 'num', text: String(r.candidates) }), el('td', { text: r.error || '' }));
+    })))));
+  if (failed.length) card.append(el('div', { class: 'axisnote', text: 'Failed sessions are retried automatically up to 3 times. See analyzer.log for details.' }));
+  return card;
+}
+
+/* ---------- table ---------- */
+function sortRows(rows) {
+  var k = S.sortKey, d = S.sortDir;
+  var val = {
+    id: function (r) { return r.id; },
+    text: function (r) { return r.text.toLowerCase(); },
+    project: function (r) { return plabel(r).toLowerCase(); },
+    kind: function (r) { return r.kind; },
+    status: function (r) { return STATUSES.indexOf(r.status); },
+    confidence: function (r) { return CONF_RANK[r.confidence] || 0; },
+    created: function (r) { return r.created_at || 0; }
+  }[k];
+  return rows.slice().sort(function (a, b) { var x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : a.id - b.id) * d; });
+}
+function detailRow(r, byId) {
+  var items = [];
+  function add(dt, dd) { if (dd) items.push(el('dt', { text: dt }), el('dd', { text: dd })); }
+  add('Why', r.rationale);
+  add('Evidence', r.evidence ? '“' + r.evidence + '”' : '');
+  add('Source', r.source);
+  if (r.supersedes_id) { var o = byId.get(r.supersedes_id); add('Replaces', '#' + r.supersedes_id + (o ? ' — ' + o.text : '')); }
+  add('CLAUDE.md', r.applied ? 'Written to ' + (r.applied_file || 'CLAUDE.md') : (r.claude_md ? 'Wanted, not written yet' : 'Database only'));
+  add('Created', fmtDateTime(r.created_at));
+  add('Reviewed', r.reviewed_at ? fmtDateTime(r.reviewed_at) : '');
+  add('Session', r.session_id ? r.session_id.slice(0, 8) : '');
+  return el('tr', { class: 'detail' }, el('td', { colspan: '7' }, el('dl', null, items)));
+}
+function learningsTable(rows) {
+  var card = el('section', { class: 'card' }, el('h2', { text: 'Learnings (' + rows.length + ')' }),
+    el('p', { class: 'hint', text: 'Click a learning to see why it was captured and the evidence behind it.' }));
+  if (!rows.length) { card.append(el('div', { class: 'empty', text: DATA.learnings.length ? 'No learnings match the filters.' : 'The database has no learnings yet. They appear after a session ends and is analysed.' })); return card; }
+  var byId = new Map(DATA.learnings.map(function (r) { return [r.id, r]; }));
+  var sorted = sortRows(rows), shown = sorted.slice(0, S.limit);
+  function th(label, k, cls) {
+    var active = S.sortKey === k;
+    return el('th', { class: cls || null, 'aria-sort': active ? (S.sortDir > 0 ? 'ascending' : 'descending') : 'none' },
+      el('button', { type: 'button', onclick: function () { if (S.sortKey === k) S.sortDir = -S.sortDir; else { S.sortKey = k; S.sortDir = k === 'id' || k === 'created' ? -1 : 1; } renderBody(); } },
+        label + (active ? (S.sortDir > 0 ? ' ▲' : ' ▼') : '')));
+  }
+  var tbody = el('tbody');
+  shown.forEach(function (r) {
+    var open = S.open.has(r.id);
+    var btn = el('button', { type: 'button', class: 'rowbtn', 'aria-expanded': String(open), onclick: function () {
+      if (S.open.has(r.id)) S.open.delete(r.id); else S.open.add(r.id); renderBody();
+    } }, el('span', { class: 'clamp', text: r.text }));
+    tbody.append(el('tr', { class: open ? 'open' : null },
+      el('td', { class: 'id', text: '#' + r.id }), el('td', null, btn),
+      el('td', { class: 'hide-sm', text: plabel(r) }), el('td', { class: 'hide-sm', text: r.kind }),
+      el('td', null, el('span', { class: 'stat' }, key(r.status), STATUS_LABEL[r.status])),
+      el('td', { class: 'hide-sm', text: r.confidence }), el('td', { class: 'hide-sm', style: 'white-space:nowrap', text: fmtDate(r.created_at) })));
+    if (open) tbody.append(detailRow(r, byId));
+  });
+  card.append(el('div', { class: 'tscroll' }, el('table', { class: 'lt' },
+    el('thead', null, el('tr', null, th('ID', 'id'), th('Learning', 'text'), th('Project', 'project', 'hide-sm'), th('Kind', 'kind', 'hide-sm'),
+      th('Status', 'status'), th('Conf.', 'confidence', 'hide-sm'), th('Created', 'created', 'hide-sm'))), tbody)));
+  if (sorted.length > shown.length) card.append(el('div', { class: 'more' }, el('button', { type: 'button', class: 'btn', text: 'Show ' + Math.min(100, sorted.length - shown.length) + ' more', onclick: function () { S.limit += 100; renderBody(); } })));
+  return card;
+}
+
+/* ---------- render ---------- */
+var bodyHost = null;
+function renderBody() {
+  hideTip();
+  var rows = filtered();
+  var cnt = count(filtered(true), function (r) { return r.status; });
+  Array.prototype.forEach.call(document.querySelectorAll('.chip'), function (c) {
+    c.querySelector('.cnt').textContent = String(cnt[c.getAttribute('data-status')] || 0);
+  });
+  bodyHost.textContent = '';
+  bodyHost.append(tiles(rows),
+    el('div', { class: 'grid2' }, projectChart(rows), weeklyChart(rows)),
+    el('div', { class: 'grid3' },
+      miniBars('By kind', 'What type of knowledge was captured.', count(rows, function (r) { return r.kind; }), KINDS),
+      miniBars('By source', 'What triggered the capture.', count(rows, function (r) { return r.source; }), SOURCES)),
+    learningsTable(rows), sessionsCard());
+  afterLayout.splice(0).forEach(function (f) { f(); });
+}
+function render() {
+  app.textContent = '';
+  var m = document.getElementById('meta');
+  if (!DATA) { m.textContent = 'No data.'; return; }
+  var live = boot.mode === 'live';
+  m.textContent = DATA.db + ' · ' + (live ? 'live, updated ' : 'snapshot from ') + fmtDateTime(DATA.generated_at) + ' · ' + DATA.learnings.length + ' learnings';
+  document.getElementById('refresh').style.display = live ? '' : 'none';
+  if (DATA.db_missing) {
+    app.append(el('div', { class: 'card empty' }, 'No learnings database found at ' + DATA.db + '. Run ', el('code', { text: 'run.sh init' }), ' or finish a Claude Code session with the hooks installed.'));
+    return;
+  }
+  bodyHost = el('div', null);
+  app.append(filterBar(), bodyHost);
+  renderBody();
+}
+async function load() {
+  if (boot.mode === 'live') {
+    document.body.classList.add('loading');
+    try {
+      var r = await fetch('/api/data', { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      DATA = await r.json();
+    } catch (e) {
+      document.getElementById('meta').textContent = 'Could not load data: ' + e.message;
+      document.body.classList.remove('loading');
+      return;
+    }
+    document.body.classList.remove('loading');
+  } else {
+    DATA = boot.data;
+  }
+  render();
+}
+
+/* ---------- theme ---------- */
+var THEMES = ['auto', 'light', 'dark'];
+function applyTheme(t) {
+  if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t);
+  document.getElementById('theme').textContent = 'Theme: ' + t;
+}
+var theme = 'auto';
+try { theme = localStorage.getItem('lm-theme') || 'auto'; } catch (e) { /* storage unavailable */ }
+if (THEMES.indexOf(theme) < 0) theme = 'auto';
+applyTheme(theme);
+document.getElementById('theme').addEventListener('click', function () {
+  theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
+  applyTheme(theme);
+  try { localStorage.setItem('lm-theme', theme); } catch (e) { /* ignore */ }
+});
+document.getElementById('refresh').addEventListener('click', load);
+if (boot.mode === 'live') setInterval(function () { if (!document.hidden) load(); }, 30000);
+load();
+})();
+</script>
+</body>
+</html>
