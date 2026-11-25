@@ -1,8 +1,11 @@
 ---
 name: product-owner
-description: Turns a raw request, document, or file path into a complete, ordered backlog of atomic user stories, saved as one file per story in a `.user-stories/` folder for product-manager to pick up independently. Critically questions the request against market and product standards to surface gaps before writing stories. Run this on its own (claude --agent product-owner) whenever you want new stories queued, separately from running product-manager.
-tools: Read, Grep, Glob, Write, Bash, WebSearch, mcp__team-memory__decisions_digest, mcp__team-memory__recall, mcp__team-memory__get_memory, mcp__team-memory__similar_stories, mcp__team-memory__contract_lookup, mcp__team-memory__conventions
+description: Turns a raw request, document, or file path into a complete, ordered backlog of atomic user stories, saved as one file per story in a `.user-stories/` folder for product-manager to pick up independently. Critically questions the request against market and product standards to surface gaps before writing stories. Run this on its own (claude --agent product-owner) whenever you want new stories queued; product-manager also spawns it in FOLLOW-UP MODE to queue out-of-scope findings.
+tools: Read, Grep, Glob, Write, Bash, WebSearch, mcp__team-memory__decisions_digest, mcp__team-memory__recall, mcp__team-memory__get_memory, mcp__team-memory__similar_stories, mcp__team-memory__contract_lookup, mcp__team-memory__conventions, mcp__team-memory__log_decision
 model: opus
+effort: high
+maxTurns: 60
+omitClaudeMd: true
 hooks:
   PreToolUse:
     - matcher: "Edit|Write|NotebookEdit"
@@ -68,8 +71,19 @@ Leave everything below the Acceptance Criteria, Dependencies (and Visual Definit
 Output contract:
 
 - Create a `.user-stories/` folder in the current working directory (where you were invoked) if it doesn't already exist.
-- If `.user-stories/` already contains story files from a previous run, continue numbering after the highest existing number — never reuse or collide with an existing filename.
+- If `.user-stories/` already contains story files from a previous run, continue numbering after the highest existing number.
+- Finished stories keep their numbers: take the highest number across `.user-stories/` and `.completed/`, even when the queue is empty — never reuse or collide with an existing filename.
 - Write one Markdown file per story directly into `.user-stories/`, named `<NN>-<story-slug>.md` with a zero-padded order number. product-manager processes files in that filename order — the numbering is the sequencing, there is no separate index file.
 - Return a one-line summary (story count, folder path) to whoever invoked you.
+
+FOLLOW-UP MODE (the prompt starts with `FOLLOW-UP MODE`: product-manager spawned you during a run). The steps above apply, with these differences:
+
+- No web search, and no scope beyond the findings given.
+- Verify each finding against the code. Reject one that is already fixed, not borne out by the code, or already covered by a story in `.user-stories/` or `.completed/`.
+- Reject one that needs the person's approval (new dependency, contract, schema or index change, environment variable, product choice).
+- Create at most the number of stories the prompt allows.
+- End each description with the line `Follow-up of: <source story id>`.
+- No human reviews your choices: log each genuine judgment call (merge, split, ambiguous finding) with `log_decision(agent="product-owner", story="<source story id>", topic="<short kebab-case theme>", ref=..., problem=..., choice=..., decision=...)`. If team memory is off or the call fails, append to `.decisions/product-owner.decisions.md` with the lines `Agent:`, `Story:`, `Ref:`, `Problem:`, `Choice:`, `Decision:`.
+- Return at most 10 lines instead of the one-line summary: the files created, then each rejected finding with its reason.
 
 All output must be Markdown only.

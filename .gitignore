@@ -2,3 +2,8 @@
 # except conventions.md, which is meant to be shared and committed.
 .pipeline/*
 !.pipeline/conventions.md
+
+
+# Remove pixel studio and game studio
+office/*
+game-studio-agents/*
