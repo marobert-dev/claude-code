@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parent.parent
-SESSION_AGENTS = {"product-manager", "product-owner"}   # run as the session itself: no omitClaudeMd/effort pins
+SESSION_AGENTS = {"product-manager"}   # only ever the session itself: no omitClaudeMd/effort pins
 
 try:
     import yaml  # type: ignore

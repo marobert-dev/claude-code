@@ -61,7 +61,7 @@ The gate remembers its last pass in `.pipeline/gate-pass` (a fingerprint of HEAD
 
 **For another agent installing this on your behalf:** clone the repo, run `bash install.sh [workspace-dir]` (or `install.ps1` on native Windows PowerShell), then read section 2 onward below to queue and run the pipeline — no other setup is required except the optional tools in section 7.
 
-## 2. Queue stories (product-owner, run on its own)
+## 2. Queue stories (product-owner)
 
 From your workspace root — the folder that either *is* the app repo, or contains each app repo as a subdirectory if the story spans more than one (e.g. separate frontend/backend repos):
 
@@ -69,9 +69,9 @@ From your workspace root — the folder that either *is* the app repo, or contai
 claude --agent product-owner
 ```
 
-Give it the request. It writes one Markdown file per story into `.user-stories/` in that same folder, named `<NN>-<story-slug>.md`, the number giving the processing order — and continues numbering after whatever's already queued if you run it again. product-owner and product-manager are fully independent — run product-owner as many times as you want to queue more stories before ever running product-manager.
+Give it the request. It writes one Markdown file per story into `.user-stories/` in that same folder, named `<NN>-<story-slug>.md`, the number giving the processing order — and continues numbering after whatever's already queued if you run it again. Run product-owner as many times as you want to queue more stories before ever running product-manager. product-manager also calls it on its own, only to queue follow-up stories (section 3).
 
-## 3. Process the queue (product-manager, run independently)
+## 3. Process the queue (product-manager)
 
 ```bash
 claude --agent product-manager
@@ -90,11 +90,12 @@ claude --agent product-manager
   8. If everything passes, story-validator archives the story into `.validated-stories/`, product-manager runs the full gate (`gate.sh --full`) and sends its failures to the owning dev agent, then **doc-writer** runs (reusing ui-reviewer's desktop screenshots for the user manual), and the story file is **moved** from `.user-stories/` to `.completed/` — that queue only ever holds unfinished work. `pm-state.sh finish` prints which periodic duties are due (`DUE digest` every 3rd completed story and after a failure, `DUE refresh` every 6th), so every session, ONE STORY MODE included, follows the same schedule.
 - Every agent runs autonomously (no per-step approval) and logs any genuine judgment call — an ambiguous criterion, a contradiction, a gap, a question — rather than stopping to ask: with `log_decision` when team memory is available (one call, grouped by topic, recurring topics become standing rules), otherwise to `.decisions/<agent-name>.decisions.md`. After each story (completed or failed) product-manager calls `export_decisions_files(story)`, so `.decisions/` always holds that story's entries as files too.
 - product-manager writes a handoff checkpoint every 3 completed stories and once more when the queue is empty, refreshing `.pipeline/decisions-digest.md` each time. product-owner reads that digest, so recurring ambiguities get fixed at the source (sharper criteria) instead of being guessed again and again.
+- **Follow-up stories.** An out-of-scope defect or improvement with evidence is sent straight to **product-owner** (`FOLLOW-UP MODE`: no web search, each finding checked against the code), which queues it at the end of `.user-stories/` without asking you. Each such story carries `Follow-up of: <story-id>` and does not generate further ones (except High/Critical security defects); at most 3 per run (so per story with `run-queue.sh`). Findings that need your approval, chores for a plain Claude Code session, and anything found in WORKTREE MODE are not queued: their prompts are listed under `## Follow-ups not queued` in `.pipeline/pm-progress.md` and named in the final summary.
 - With git management enabled, commits include this story's application changes — but never `.user-stories/`, `.stories-reviewed/`, `.validated-stories/`, `.completed/`, `.decisions/`, or `.pipeline/pm-progress.md`, which are local coordination state (also `.pipeline/pm-last-run.txt`, `.pipeline/decisions-digest.md`, `.pipeline/gate-pass`, `.pipeline/gate.log` and `.pipeline/team-memory.db*`). Add those specific paths to `.gitignore` if you haven't already; the rest of `.claude/` (like `.claude/agents/`) should stay committed for the team. If the project uses Graphify, its `graphify-out/` folder is managed by Graphify's own git hook, independent of this pipeline's commits.
 
 Don't set `product-manager` as a project-wide default agent in `.claude/settings.json` — that would force every session in that repo into pipeline mode, including plain ad-hoc coding sessions. Use `--agent` per run instead.
 
-**Why launch with `product-manager`, not `product-owner`, to process the queue:** only the agent running as the actual Claude Code session has native access to your `/handoff` and `/resume` commands, and product-manager is the one that needs them (it pauses mid-pipeline on failure, and checkpoints every 3 stories). product-owner doesn't need this — it's a short, one-shot run, which is also why it's fine for it to be a fully separate invocation now.
+**Why launch with `product-manager`, not `product-owner`, to process the queue:** only the agent running as the actual Claude Code session has native access to your `/handoff` and `/resume` commands, and product-manager is the one that needs them (it pauses mid-pipeline on failure, and checkpoints every 3 stories). product-owner doesn't need this — it's a short, one-shot run, whether you start it or product-manager spawns it.
 
 ## 3a. Graphify integration (optional, enables auto-update)
 
@@ -248,7 +249,7 @@ Every directory this pipeline creates and manages for itself is dot-prefixed (hi
 
 | Path | Written/updated by | Contents | Commit to git? |
 |---|---|---|---|
-| `.user-stories/<NN>-<slug>.md` | product-owner (created), analyst/product-manager (appended to), product-manager (deleted once finished) | The live queue: one file per unfinished story | No — local coordination state |
+| `.user-stories/<NN>-<slug>.md` | product-owner (created; run by you, or by product-manager for follow-ups), analyst/product-manager (appended to), product-manager (deleted once finished) | The live queue: one file per unfinished story | No — local coordination state |
 | `.pipeline/pm-progress.md` | product-manager | Status per story (pending/in progress/done/failed) | No — local coordination state |
 | `.stories-reviewed/<same-filename>` | product-manager | Permanent copy of every story file as returned by story-validator, pass or fail — the queue file itself gets moved, not deleted, once finished, but this copy stays put | No — local coordination state |
 | `.validated-stories/<same-filename>` | story-validator | Copy of every story that has fully passed — the regression-testing baseline for every story validated afterward | No — local coordination state |
@@ -278,8 +279,8 @@ All 13 live in [`agents/`](agents/).
 
 | File | Role |
 |---|---|
-| `agents/product-owner.md` | Critiques the request against market standards, creates and orders stories into `.user-stories/`. Runs independently. |
-| `agents/product-manager.md` | Hub — processes `.user-stories/` one file at a time, tracks progress, pauses via `/handoff`. Runs independently. |
+| `agents/product-owner.md` | Critiques the request against market standards, creates and orders stories into `.user-stories/`. Run by you, or by product-manager for follow-ups. |
+| `agents/product-manager.md` | Hub — processes `.user-stories/` one file at a time, tracks progress, pauses via `/handoff`, queues follow-up stories through product-owner. Run as the session agent. |
 | `agents/analyst.md` | Appends the technical plan (incl. UI/UX) into each story file |
 | `agents/dev-frontend.md` | Web and mobile (React Native) client implementation (stubbed API clients) |
 | `agents/dev-backend.md` | Backend implementation |
@@ -292,7 +293,7 @@ All 13 live in [`agents/`](agents/).
 | `agents/security-reviewer.md` | Reviews every changed file for security (authZ, validation, secrets, dependencies, mobile), inline `SECURITY:` comments, loops with the dev agents |
 | `agents/ui-reviewer.md` | Reviews the rendered web UI of a validated story from screenshots (360 px and 1280 px, FR + EN) and automated findings against its Visual Definition; inline `UX:` comments for must-fix defects only. Runs only for web stories with a Visual Definition |
 
-Models: `opus` for product-owner (planning errors are the most expensive downstream); analyst moved from `opus` to `sonnet` on 2026-10-21 after an A/B on the eval kit (same mean score, about 70% cheaper); `haiku` for unit-tester; `sonnet` for everything else — doc-writer stays on sonnet because the beginner-level French/English manual needs natural wording, and ui-reviewer because it judges screenshots. Subagents pin `effort: medium` (the default of Sonnet 5.5 in Claude Code, so unchanged from the eval baselines) and unit-tester `effort: high` (nearly free on haiku); the two session agents follow the session's level.
+Models: `opus` for product-owner (planning errors are the most expensive downstream); analyst moved from `opus` to `sonnet` on 2026-10-21 after an A/B on the eval kit (same mean score, about 70% cheaper); `haiku` for unit-tester; `sonnet` for everything else — doc-writer stays on sonnet because the beginner-level French/English manual needs natural wording, and ui-reviewer because it judges screenshots. Subagents pin `effort: medium` (the default of Sonnet 5.5 in Claude Code, so unchanged from the eval baselines) and unit-tester `effort: high` (nearly free on haiku); product-manager follows the session's level; product-owner pins `effort: high`, since it is also spawned.
 
 Existing published alternatives found while designing each role are listed under [Alternatives considered](#alternatives-considered) — kept out of the prompts so agents don't pay for them on every call.
 
